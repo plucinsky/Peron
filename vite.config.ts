@@ -24,12 +24,4 @@ export default defineConfig({
             },
         }),
     ],
-    build: {
-        cssCodeSplit: false,
-        rollupOptions: {
-            output: {
-                inlineDynamicImports: true,
-            },
-        },
-    },
 });
