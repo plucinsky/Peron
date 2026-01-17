@@ -23,6 +23,8 @@ return new class extends Migration
             $table->text('weather')->nullable();
             $table->unsignedBigInteger('leader_person_id')->nullable();
             $table->json('member_person_ids')->nullable();
+            $table->json('other_person_ids')->nullable();
+            $table->text('sss_participants_note')->nullable();
             $table->text('other_participants')->nullable();
             $table->longText('work_description')->nullable();
             $table->decimal('excavated_length_m', 8, 2)->nullable();

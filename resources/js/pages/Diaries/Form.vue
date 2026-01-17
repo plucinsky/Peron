@@ -1,12 +1,29 @@
 <script setup lang="ts">
-import { Head, Link, useForm } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import {
+    ChevronDown,
+    ChevronUp,
+    Download,
+    Loader2,
+    Save,
+    Trash2,
+    Upload,
+} from 'lucide-vue-next';
+import { computed, ref, watch } from 'vue';
 
 import InputError from '@/components/InputError.vue';
 import PersonMultiSelect from '@/components/PersonMultiSelect.vue';
 import PersonSelect from '@/components/PersonSelect.vue';
 import RichTextEditor from '@/components/RichTextEditor.vue';
 import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -24,6 +41,8 @@ interface DiaryFormData {
     weather: string;
     leader_person_id: string;
     member_person_ids: string[];
+    other_person_ids: string[];
+    sss_participants_note: string;
     other_participants: string;
     work_description: string;
     excavated_length_m: string;
@@ -42,24 +61,303 @@ interface PersonOption {
     last_name: string;
 }
 
+interface AttachmentRow {
+    id: number;
+    name: string;
+    original_filename: string | null;
+    caption: string | null;
+    seq: number | null;
+    download_url: string;
+    created_at: string | null;
+}
+
+interface AttachmentView {
+    id: string | number;
+    captionDraft: string;
+    seqDraft: string;
+    isPending: boolean;
+    saving?: boolean;
+}
+
 const props = defineProps<{
     diary: DiaryFormData | null;
     persons: PersonOption[];
+    attachments: AttachmentRow[];
 }>();
 
 const isEdit = computed(() => Boolean(props.diary?.id));
 
-const tabs = [
-    'Zakladne informacie',
-    'Osoby',
-    'Popis pracovnej cinnosti',
-    'Metriky',
-    'Podpisova cast',
-] as const;
+const tabs = computed(() => {
+    const base = [
+        'Zakladne informacie',
+        'Ucastnici akcie',
+        'Pracovna cinnost',
+        'Zaverecna cast',
+    ] as const;
+    if (props.diary?.id) {
+        return [...base, 'Prilohy'] as const;
+    }
+    return base;
+});
 
-const activeTab = ref<(typeof tabs)[number]>(tabs[0]);
+const activeTab = ref<(typeof tabs.value)[number]>(tabs.value[0]);
 
 const membersPlaceholder = 'Zacnite pisat meno';
+
+const pendingAttachments = ref<
+    Array<{
+        id: string;
+        file: File;
+        name: string;
+        original_filename: string;
+        download_url: string;
+        captionDraft: string;
+        seqDraft: string;
+        saving: false;
+        isPending: true;
+    }>
+>([]);
+const dropActive = ref(false);
+const uploadInputRef = ref<HTMLInputElement | null>(null);
+const deleteTarget = ref<{ id: string | number; isPending: boolean } | null>(
+    null
+);
+const showDeleteModal = ref(false);
+const existingAttachments = ref(
+    props.attachments.map((item) => ({
+        ...item,
+        captionDraft: item.caption ?? '',
+        seqDraft: item.seq !== null && item.seq !== undefined ? String(item.seq) : '',
+        saving: false,
+        isPending: false,
+    }))
+);
+
+watch(
+    () => props.attachments,
+    (next) => {
+        existingAttachments.value = next.map((item) => ({
+            ...item,
+            captionDraft: item.caption ?? '',
+            seqDraft: item.seq !== null && item.seq !== undefined ? String(item.seq) : '',
+            saving: false,
+            isPending: false,
+        }));
+    }
+);
+
+const hasPendingAttachments = computed(
+    () => pendingAttachments.value.length > 0
+);
+
+const combinedAttachments = computed(() => {
+    const items = [
+        ...pendingAttachments.value,
+        ...existingAttachments.value,
+    ];
+    return [...items].sort((a, b) => {
+        const aSeq = a.seqDraft === '' ? Number.POSITIVE_INFINITY : Number(a.seqDraft);
+        const bSeq = b.seqDraft === '' ? Number.POSITIVE_INFINITY : Number(b.seqDraft);
+        if (aSeq === bSeq) {
+            return 0;
+        }
+        return aSeq - bSeq;
+    });
+});
+
+function removePendingAttachment(id: string) {
+    const target = pendingAttachments.value.find((item) => item.id === id);
+    if (target) {
+        URL.revokeObjectURL(target.download_url);
+    }
+    pendingAttachments.value = pendingAttachments.value.filter(
+        (item) => item.id !== id
+    );
+}
+
+function ensureSeqDefaults() {
+    const items = [
+        ...pendingAttachments.value,
+        ...existingAttachments.value,
+    ];
+    items.forEach((item, index) => {
+        if (item.seqDraft === '' || item.seqDraft === null || item.seqDraft === undefined) {
+            item.seqDraft = String(index + 1);
+        }
+    });
+}
+
+watch(
+    () => [pendingAttachments.value.length, existingAttachments.value.length],
+    () => {
+        ensureSeqDefaults();
+    },
+    { immediate: true }
+);
+
+function moveAttachment(itemId: string, direction: 'up' | 'down') {
+    const ordered = combinedAttachments.value;
+    const index = ordered.findIndex((item) => item.id === itemId);
+    if (index === -1) {
+        return;
+    }
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= ordered.length) {
+        return;
+    }
+    const current = ordered[index];
+    const neighbor = ordered[targetIndex];
+    const currentSeq = current.seqDraft;
+    current.seqDraft = neighbor.seqDraft;
+    neighbor.seqDraft = currentSeq;
+
+    if (!current.isPending) {
+        saveAttachmentCaption(current);
+    }
+    if (!neighbor.isPending) {
+        saveAttachmentCaption(neighbor);
+    }
+}
+
+function addFiles(files: FileList | File[]) {
+    Array.from(files).forEach((file) => {
+        const previewUrl = URL.createObjectURL(file);
+        pendingAttachments.value.push({
+            id: `row-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            file,
+            name: file.name,
+            original_filename: file.name,
+            download_url: previewUrl,
+            captionDraft: '',
+            seqDraft: '',
+            saving: false,
+            isPending: true,
+        });
+    });
+}
+
+function handleFileInput(event: Event) {
+    const target = event.target as HTMLInputElement;
+    const files = target.files;
+    if (files && files.length > 0) {
+        addFiles(files);
+        target.value = '';
+    }
+}
+
+function handleDrop(event: DragEvent) {
+    event.preventDefault();
+    dropActive.value = false;
+    if (event.dataTransfer?.files?.length) {
+        addFiles(event.dataTransfer.files);
+    }
+}
+
+function saveAttachmentCaption(item: AttachmentView) {
+    if (!props.diary?.id || item.isPending) {
+        return;
+    }
+    item.saving = true;
+    router.put(
+        `/denniky/${props.diary.id}/attachments/${item.id}`,
+        {
+            caption: item.captionDraft || null,
+            seq: item.seqDraft !== '' ? Number(item.seqDraft) : null,
+        },
+        {
+            preserveScroll: true,
+            onFinish: () => {
+                item.saving = false;
+            },
+        }
+    );
+}
+
+function requestDeleteAttachment(id: string | number, isPending: boolean) {
+    deleteTarget.value = { id, isPending };
+    showDeleteModal.value = true;
+}
+
+function closeDeleteModal() {
+    showDeleteModal.value = false;
+    deleteTarget.value = null;
+}
+
+function confirmDeleteAttachment() {
+    if (!deleteTarget.value || !props.diary?.id) {
+        return;
+    }
+
+    if (deleteTarget.value.isPending) {
+        removePendingAttachment(String(deleteTarget.value.id));
+        closeDeleteModal();
+        return;
+    }
+
+    router.delete(
+        `/denniky/${props.diary.id}/attachments/${deleteTarget.value.id}`,
+        {
+            preserveScroll: true,
+            onFinish: closeDeleteModal,
+        }
+    );
+}
+
+function parseDownloadFilename(disposition: string | null, fallback: string) {
+    if (!disposition) {
+        return fallback;
+    }
+    const match = disposition.match(/filename\*?=(?:UTF-8''|")?([^;"]+)/i);
+    if (!match) {
+        return fallback;
+    }
+    return decodeURIComponent(match[1]).replace(/["']/g, '') || fallback;
+}
+
+async function downloadAttachment(url: string) {
+    const response = await fetch(url, { credentials: 'same-origin' });
+    if (!response.ok) {
+        throw new Error('Download failed');
+    }
+    const blob = await response.blob();
+    const filename = parseDownloadFilename(
+        response.headers.get('Content-Disposition'),
+        'dennik.pdf'
+    );
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = filename;
+    link.rel = 'noopener';
+    link.click();
+    URL.revokeObjectURL(objectUrl);
+}
+
+function submitAttachments() {
+    if (!props.diary?.id) {
+        return;
+    }
+    const payload = new FormData();
+    pendingAttachments.value.forEach((row) => {
+        payload.append('files[]', row.file);
+        payload.append('captions[]', row.captionDraft);
+        payload.append('seqs[]', row.seqDraft !== '' ? row.seqDraft : '');
+    });
+    if (!payload.has('files[]')) {
+        return;
+    }
+    payload.append('relation_type', 'attachment');
+
+    router.post(`/denniky/${props.diary.id}/attachments`, payload, {
+        forceFormData: true,
+        onSuccess: () => {
+            pendingAttachments.value.forEach((row) => {
+                URL.revokeObjectURL(row.download_url);
+            });
+            pendingAttachments.value = [];
+        },
+    });
+}
 
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -90,6 +388,10 @@ const form = useForm({
     member_person_ids: (props.diary?.member_person_ids ?? []).map((id) =>
         String(id)
     ),
+    other_person_ids: (props.diary?.other_person_ids ?? []).map((id) =>
+        String(id)
+    ),
+    sss_participants_note: props.diary?.sss_participants_note ?? '',
     other_participants: props.diary?.other_participants ?? '',
     work_description: props.diary?.work_description ?? '',
     excavated_length_m: props.diary?.excavated_length_m
@@ -134,6 +436,8 @@ function submit() {
             ? Number(form.leader_person_id)
             : null,
         member_person_ids: form.member_person_ids.map((id) => Number(id)),
+        other_person_ids: form.other_person_ids.map((id) => Number(id)),
+        sss_participants_note: form.sss_participants_note || null,
         other_participants: form.other_participants || null,
         work_description: form.work_description || null,
         excavated_length_m: form.excavated_length_m
@@ -161,6 +465,11 @@ function submit() {
     if (isEdit.value && props.diary?.id) {
         form.put(`/denniky/${props.diary.id}`, {
             data: payload,
+            onSuccess: () => {
+                if (hasPendingAttachments.value) {
+                    submitAttachments();
+                }
+            },
         });
         return;
     }
@@ -185,9 +494,19 @@ function submit() {
                         Udaje zodpovedaju rozlozeniu technickeho dennika.
                     </p>
                 </div>
-                <Button variant="outline" as-child>
-                    <Link href="/denniky">Spat na zoznam</Link>
-                </Button>
+                <div class="flex flex-wrap gap-2">
+                    <Button
+                        v-if="props.diary?.id"
+                        variant="outline"
+                        type="button"
+                        @click="downloadAttachment(`/denniky/${props.diary.id}/pdf`)"
+                    >
+                        Stiahnut PDF
+                    </Button>
+                    <Button variant="outline" as-child>
+                        <Link href="/denniky">Spat na zoznam</Link>
+                    </Button>
+                </div>
             </div>
 
             <form class="mx-auto w-full max-w-6xl space-y-6" @submit.prevent="submit">
@@ -223,16 +542,7 @@ function submit() {
                             />
                             <InputError :message="form.errors.report_number" />
                         </div>
-                        <div class="grid gap-2">
-                            <Label for="action-date">Datum</Label>
-                            <Input
-                                id="action-date"
-                                type="date"
-                                v-model="form.action_date"
-                            />
-                            <InputError :message="form.errors.action_date" />
-                        </div>
-                        <div class="grid gap-2">
+                        <div class="lg:col-span-2 grid gap-2">
                             <Label for="locality-name">Lokalita</Label>
                             <Input
                                 id="locality-name"
@@ -268,57 +578,65 @@ function submit() {
                                 :message="form.errors.orographic_unit"
                             />
                         </div>
-                        <div class="md:col-span-2 lg:col-span-3 grid gap-2">
-                            <Label for="work-time">Pracovny cas</Label>
-                            <Input
-                                id="work-time"
-                                v-model="form.work_time"
-                                placeholder="Napr. 09:00 - 17:30"
+                        <div class="grid gap-2">
+                            <Label for="leader-person">Veduci akcie</Label>
+                            <PersonSelect
+                                v-model="form.leader_person_id"
+                                :options="props.persons"
+                                placeholder="Vyberte veduceho"
                             />
-                            <InputError :message="form.errors.work_time" />
-                        </div>
-                        <div class="md:col-span-2 lg:col-span-3 grid gap-2">
-                            <Label for="weather">Pocasie pocas akcie</Label>
-                            <textarea
-                                id="weather"
-                                rows="3"
-                                class="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
-                                v-model="form.weather"
-                            ></textarea>
-                            <InputError :message="form.errors.weather" />
+                            <InputError
+                                :message="form.errors.leader_person_id"
+                            />
                         </div>
                     </div>
                 </div>
 
                 <div
-                    v-show="activeTab === 'Osoby'"
+                    v-show="activeTab === 'Ucastnici akcie'"
                     class="rounded-md border border-sidebar-border bg-sidebar p-4 [&_input]:bg-background [&_select]:bg-background [&_textarea]:bg-background"
                 >
-                    <h2 class="text-lg font-semibold">Osoby</h2>
-                    <div class="mt-4 grid gap-6 lg:grid-cols-3">
-                        <div class="grid gap-3">
-                            <Label for="member-search">Ostatni clenovia SSS</Label>
-                            <PersonMultiSelect
-                                v-model="form.member_person_ids"
-                                :options="props.persons"
-                                :placeholder="membersPlaceholder"
-                            />
-                            <InputError :message="form.errors.member_person_ids" />
-                        </div>
-                        <div class="grid gap-4 lg:col-span-2">
-                            <div class="grid gap-2">
-                                <Label for="leader-person">Veduci akcie</Label>
-                                <PersonSelect
-                                    v-model="form.leader_person_id"
+                    <h2 class="text-lg font-semibold">Ucastnici akcie</h2>
+                    <div class="mt-4 grid gap-6 lg:grid-cols-2 lg:items-start">
+                        <div class="grid gap-4">
+                            <div class="grid gap-3">
+                                <Label for="member-search">Clenovia SSS</Label>
+                                <PersonMultiSelect
+                                    v-model="form.member_person_ids"
                                     :options="props.persons"
-                                    placeholder="Vyberte veduceho"
+                                    :placeholder="membersPlaceholder"
                                 />
-                                <InputError
-                                    :message="form.errors.leader_person_id"
-                                />
+                                <InputError :message="form.errors.member_person_ids" />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="other-participants">Ini ucastnici</Label>
+                                <Label for="sss-participants-note">
+                                    Doplnujuca poznamka k clenov SSS
+                                </Label>
+                                <textarea
+                                    id="sss-participants-note"
+                                    rows="3"
+                                    class="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                                    v-model="form.sss_participants_note"
+                                ></textarea>
+                                <InputError
+                                    :message="form.errors.sss_participants_note"
+                                />
+                            </div>
+                        </div>
+                        <div class="grid gap-4 lg:self-start">
+                            <div class="grid gap-3">
+                                <Label for="other-persons">Ini ucastnici</Label>
+                                <PersonMultiSelect
+                                    v-model="form.other_person_ids"
+                                    :options="props.persons"
+                                    placeholder="Zacnite pisat meno"
+                                />
+                                <InputError :message="form.errors.other_person_ids" />
+                            </div>
+                            <div class="grid gap-2">
+                                <Label for="other-participants">
+                                    Doplnujuca poznamka k inym ucastnikom
+                                </Label>
                                 <textarea
                                     id="other-participants"
                                     rows="3"
@@ -334,19 +652,51 @@ function submit() {
                 </div>
 
                 <div
-                    v-show="activeTab === 'Popis pracovnej cinnosti'"
+                    v-show="activeTab === 'Pracovna cinnost'"
                     class="rounded-md border border-sidebar-border bg-sidebar p-4 [&_input]:bg-background [&_select]:bg-background [&_textarea]:bg-background"
                 >
-                    <h2 class="text-lg font-semibold">Popis pracovnej cinnosti</h2>
-                    <div class="mt-4 grid gap-2">
-                        <Label for="work-description">Popis</Label>
-                        <RichTextEditor v-model="form.work_description" />
-                        <InputError :message="form.errors.work_description" />
+                    <h2 class="text-lg font-semibold">Pracovna cinnost</h2>
+                    <div class="mt-4 grid gap-4 md:grid-cols-[1fr_2fr] md:items-start">
+                        <div class="grid gap-4">
+                            <div class="grid gap-2">
+                                <Label for="action-date">Datum</Label>
+                                <Input
+                                    id="action-date"
+                                    type="date"
+                                    v-model="form.action_date"
+                                />
+                                <InputError :message="form.errors.action_date" />
+                            </div>
+                            <div class="grid gap-2">
+                                <Label for="work-time">Pracovny cas</Label>
+                                <Input
+                                    id="work-time"
+                                    v-model="form.work_time"
+                                    placeholder="Napr. 09:00 - 17:30"
+                                />
+                                <InputError :message="form.errors.work_time" />
+                            </div>
+                        </div>
+                        <div class="grid gap-2 md:self-start">
+                            <Label for="weather">Pocasie pocas akcie</Label>
+                            <textarea
+                                id="weather"
+                                rows="3"
+                                class="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                                v-model="form.weather"
+                            ></textarea>
+                            <InputError :message="form.errors.weather" />
+                        </div>
+                        <div class="md:col-span-2 grid gap-2">
+                            <Label for="work-description">Popis</Label>
+                            <RichTextEditor v-model="form.work_description" />
+                            <InputError :message="form.errors.work_description" />
+                        </div>
                     </div>
                 </div>
 
                 <div
-                    v-show="activeTab === 'Metriky'"
+                    v-show="activeTab === 'Zaverecna cast'"
                     class="rounded-md border border-sidebar-border bg-sidebar p-4 [&_input]:bg-background [&_select]:bg-background [&_textarea]:bg-background"
                 >
                     <h2 class="text-lg font-semibold">Metriky</h2>
@@ -404,61 +754,198 @@ function submit() {
                             />
                         </div>
                     </div>
+
+                    <div class="mt-8">
+                        <h2 class="text-lg font-semibold">Podpisy</h2>
+                        <div class="mt-4 grid gap-4 md:grid-cols-2">
+                            <div class="grid gap-2">
+                                <Label for="leader-signed-person">
+                                    Datum a podpis veduceho akcie
+                                </Label>
+                                <PersonSelect
+                                    v-model="form.leader_signed_person_id"
+                                    :options="props.persons"
+                                    placeholder="Vyberte osobu"
+                                />
+                                <InputError
+                                    :message="form.errors.leader_signed_person_id"
+                                />
+                            </div>
+                            <div class="grid gap-2">
+                                <Label for="leader-signed-at">Datum podpisu</Label>
+                                <Input
+                                    id="leader-signed-at"
+                                    type="date"
+                                    v-model="form.leader_signed_at"
+                                />
+                                <InputError
+                                    :message="form.errors.leader_signed_at"
+                                />
+                            </div>
+                            <div class="grid gap-2">
+                                <Label for="club-signed-person">
+                                    Datum a podpis veduceho klubu
+                                </Label>
+                                <PersonSelect
+                                    v-model="form.club_signed_person_id"
+                                    :options="props.persons"
+                                    placeholder="Vyberte osobu"
+                                />
+                                <InputError
+                                    :message="form.errors.club_signed_person_id"
+                                />
+                            </div>
+                            <div class="grid gap-2">
+                                <Label for="club-signed-at">Datum podpisu</Label>
+                                <Input
+                                    id="club-signed-at"
+                                    type="date"
+                                    v-model="form.club_signed_at"
+                                />
+                                <InputError
+                                    :message="form.errors.club_signed_at"
+                                />
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div
-                    v-show="activeTab === 'Podpisova cast'"
+                    v-show="activeTab === 'Prilohy'"
                     class="rounded-md border border-sidebar-border bg-sidebar p-4 [&_input]:bg-background [&_select]:bg-background [&_textarea]:bg-background"
                 >
-                    <h2 class="text-lg font-semibold">Podpisy</h2>
-                    <div class="mt-4 grid gap-4 md:grid-cols-2">
-                        <div class="grid gap-2">
-                            <Label for="leader-signed-person">
-                                Datum a podpis veduceho akcie
-                            </Label>
-                            <PersonSelect
-                                v-model="form.leader_signed_person_id"
-                                :options="props.persons"
-                                placeholder="Vyberte osobu"
-                            />
-                            <InputError
-                                :message="form.errors.leader_signed_person_id"
-                            />
+                    <h2 class="text-lg font-semibold">Prilohy</h2>
+
+                    <div v-if="!props.diary?.id" class="mt-4 text-sm text-muted-foreground">
+                        Prilohy je mozne pridat az po ulozeni dennika.
+                    </div>
+
+                    <div v-else class="mt-4 space-y-6">
+                        <input
+                            ref="uploadInputRef"
+                            type="file"
+                            class="hidden"
+                            accept="image/*"
+                            multiple
+                            @change="handleFileInput"
+                        />
+                        <div
+                            class="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-md border border-dashed bg-background px-3 py-6 text-center"
+                            @click="uploadInputRef?.click()"
+                            @dragenter.prevent="dropActive = true"
+                            @dragover.prevent="dropActive = true"
+                            @dragleave.prevent="dropActive = false"
+                            @drop="handleDrop"
+                            :class="dropActive ? 'border-primary bg-primary/5' : 'border-border'"
+                        >
+                            <div
+                                class="flex h-12 w-12 items-center justify-center rounded-full bg-muted-foreground/15 text-foreground"
+                            >
+                                <Upload class="h-6 w-6" />
+                            </div>
+                            <div class="text-sm font-medium text-foreground">
+                                Pretiahnite obrazky sem alebo kliknite.
+                            </div>
                         </div>
-                        <div class="grid gap-2">
-                            <Label for="leader-signed-at">Datum podpisu</Label>
-                            <Input
-                                id="leader-signed-at"
-                                type="date"
-                                v-model="form.leader_signed_at"
-                            />
-                            <InputError
-                                :message="form.errors.leader_signed_at"
-                            />
-                        </div>
-                        <div class="grid gap-2">
-                            <Label for="club-signed-person">
-                                Datum a podpis veduceho klubu
-                            </Label>
-                            <PersonSelect
-                                v-model="form.club_signed_person_id"
-                                :options="props.persons"
-                                placeholder="Vyberte osobu"
-                            />
-                            <InputError
-                                :message="form.errors.club_signed_person_id"
-                            />
-                        </div>
-                        <div class="grid gap-2">
-                            <Label for="club-signed-at">Datum podpisu</Label>
-                            <Input
-                                id="club-signed-at"
-                                type="date"
-                                v-model="form.club_signed_at"
-                            />
-                            <InputError
-                                :message="form.errors.club_signed_at"
-                            />
+
+                        <div v-if="combinedAttachments.length > 0" class="space-y-2">
+                            <h3 class="text-sm font-semibold text-muted-foreground">
+                                Prilohy
+                            </h3>
+                            <div class="rounded-md border bg-background">
+                                <div class="divide-y">
+                                    <div
+                                        v-for="item in combinedAttachments"
+                                        :key="item.id"
+                                        class="grid gap-4 px-3 py-3 text-sm md:grid-cols-[6rem_1fr_auto] md:items-start"
+                                    >
+                                        <div class="flex items-start">
+                                            <img
+                                                v-if="item.download_url"
+                                                :src="item.download_url"
+                                                alt=""
+                                                class="h-16 w-20 rounded-md object-cover"
+                                            />
+                                        </div>
+                                        <div class="grid gap-2">
+                                            <textarea
+                                                :id="`caption-${item.id}`"
+                                                rows="4"
+                                                class="w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                                                v-model="item.captionDraft"
+                                                placeholder="Popis alebo poznamka"
+                                                @blur="saveAttachmentCaption(item)"
+                                            ></textarea>
+                                            <div
+                                                v-if="item.isPending"
+                                                class="text-xs text-muted-foreground"
+                                            >
+                                                Bude ulozene po ulozeni dennika.
+                                            </div>
+                                        </div>
+                                        <div class="flex flex-wrap items-center justify-end gap-2">
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="icon"
+                                                aria-label="Posunut vyssie"
+                                                title="Posunut vyssie"
+                                                @click="moveAttachment(item.id, 'up')"
+                                            >
+                                                <ChevronUp class="h-4 w-4" />
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="icon"
+                                                aria-label="Posunut nizsie"
+                                                title="Posunut nizsie"
+                                                @click="moveAttachment(item.id, 'down')"
+                                            >
+                                                <ChevronDown class="h-4 w-4" />
+                                            </Button>
+                                            <Button
+                                                v-if="item.isPending"
+                                                type="button"
+                                                variant="outline"
+                                                size="icon"
+                                                aria-label="Zmazat"
+                                                title="Zmazat"
+                                                @click="requestDeleteAttachment(item.id, true)"
+                                            >
+                                                <Trash2 class="h-4 w-4" />
+                                            </Button>
+                                            <Button
+                                                v-if="!item.isPending"
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                aria-label="Stiahnut"
+                                                title="Stiahnut"
+                                                @click="downloadAttachment(item.download_url)"
+                                            >
+                                                <Download class="h-4 w-4" />
+                                                Stiahnut
+                                            </Button>
+                                            <Button
+                                                v-if="!item.isPending"
+                                                type="button"
+                                                variant="outline"
+                                                size="icon"
+                                                aria-label="Zmazat"
+                                                title="Zmazat"
+                                                @click="requestDeleteAttachment(item.id, false)"
+                                            >
+                                                <Trash2 class="h-4 w-4" />
+                                            </Button>
+                                            <Loader2
+                                                v-if="item.saving"
+                                                class="h-4 w-4 animate-spin text-muted-foreground"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -474,4 +961,25 @@ function submit() {
             </form>
         </div>
     </AppLayout>
+
+    <Dialog :open="showDeleteModal" @update:open="showDeleteModal = $event">
+        <DialogContent class="sm:max-w-lg">
+            <DialogHeader>
+                <DialogTitle>Vymazat prilohu?</DialogTitle>
+            </DialogHeader>
+            <p class="text-sm text-muted-foreground">
+                Naozaj chcete vymazat tuto prilohu? Tato akcia je nevratna.
+            </p>
+            <DialogFooter class="gap-2">
+                <DialogClose as-child>
+                    <Button type="button" variant="outline" @click="closeDeleteModal">
+                        Zrusit
+                    </Button>
+                </DialogClose>
+                <Button type="button" variant="destructive" @click="confirmDeleteAttachment">
+                    Vymazat
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
 </template>

@@ -19,6 +19,10 @@ class ArchiveDocument extends Model
      */
     protected $fillable = [
         'archive_id',
+        'diary_id',
+        'relation_type',
+        'caption',
+        'seq',
         'name',
         'type',
         'mime_type',

@@ -4,8 +4,17 @@ import { Editor, EditorContent } from '@tiptap/vue-3';
 import StarterKit from '@tiptap/starter-kit';
 import TextAlign from '@tiptap/extension-text-align';
 import Underline from '@tiptap/extension-underline';
-
-import { Button } from '@/components/ui/button';
+import {
+    AlignCenter,
+    AlignJustify,
+    AlignLeft,
+    AlignRight,
+    Bold,
+    Italic,
+    List,
+    ListOrdered,
+    Underline as UnderlineIcon,
+} from 'lucide-vue-next';
 
 const props = withDefaults(
     defineProps<{
@@ -23,7 +32,10 @@ const emit = defineEmits<{
 const editor = ref<Editor | null>(null);
 
 const editorClass =
-    'min-h-[14rem] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]';
+    'min-h-[14rem] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] prose max-w-none';
+
+const toolbarButton =
+    'inline-flex items-center justify-center rounded-md border border-input bg-background p-1 text-muted-foreground transition hover:text-foreground hover:bg-muted/60';
 
 onMounted(() => {
     editor.value = new Editor({
@@ -67,106 +79,107 @@ onBeforeUnmount(() => {
 
 <template>
     <div class="space-y-2">
-        <div class="flex flex-wrap items-center gap-2">
-            <Button
+        <div class="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-2 py-1.5">
+            <button
                 type="button"
-                size="sm"
-                variant="outline"
-                :class="editor && editor.isActive('bold') ? 'bg-muted' : ''"
+                :class="[
+                    toolbarButton,
+                    editor?.isActive('bold') ? 'bg-muted text-foreground' : '',
+                ]"
                 @click="editor?.chain().focus().toggleBold().run()"
             >
-                B
-            </Button>
-            <Button
+                <Bold class="h-4 w-4" />
+            </button>
+            <button
                 type="button"
-                size="sm"
-                variant="outline"
-                :class="editor && editor.isActive('italic') ? 'bg-muted' : ''"
+                :class="[
+                    toolbarButton,
+                    editor?.isActive('italic') ? 'bg-muted text-foreground' : '',
+                ]"
                 @click="editor?.chain().focus().toggleItalic().run()"
             >
-                I
-            </Button>
-            <Button
+                <Italic class="h-4 w-4" />
+            </button>
+            <button
                 type="button"
-                size="sm"
-                variant="outline"
-                :class="editor && editor.isActive('underline') ? 'bg-muted' : ''"
+                :class="[
+                    toolbarButton,
+                    editor?.isActive('underline') ? 'bg-muted text-foreground' : '',
+                ]"
                 @click="editor?.chain().focus().toggleUnderline().run()"
             >
-                U
-            </Button>
+                <UnderlineIcon class="h-4 w-4" />
+            </button>
             <div class="h-6 w-px bg-border"></div>
-            <Button
+            <button
                 type="button"
-                size="sm"
-                variant="outline"
-                :class="editor && editor.isActive('bulletList') ? 'bg-muted' : ''"
+                :class="[
+                    toolbarButton,
+                    editor?.isActive('bulletList') ? 'bg-muted text-foreground' : '',
+                ]"
                 @click="editor?.chain().focus().toggleBulletList().run()"
             >
-                •
-            </Button>
-            <Button
+                <List class="h-4 w-4" />
+            </button>
+            <button
                 type="button"
-                size="sm"
-                variant="outline"
-                :class="editor && editor.isActive('orderedList') ? 'bg-muted' : ''"
+                :class="[
+                    toolbarButton,
+                    editor?.isActive('orderedList') ? 'bg-muted text-foreground' : '',
+                ]"
                 @click="editor?.chain().focus().toggleOrderedList().run()"
             >
-                1.
-            </Button>
+                <ListOrdered class="h-4 w-4" />
+            </button>
             <div class="h-6 w-px bg-border"></div>
-            <Button
+            <button
                 type="button"
-                size="sm"
-                variant="outline"
-                :class="
-                    editor && editor.isActive({ textAlign: 'left' })
-                        ? 'bg-muted'
-                        : ''
-                "
+                :class="[
+                    toolbarButton,
+                    editor?.isActive({ textAlign: 'left' })
+                        ? 'bg-muted text-foreground'
+                        : '',
+                ]"
                 @click="editor?.chain().focus().setTextAlign('left').run()"
             >
-                L
-            </Button>
-            <Button
+                <AlignLeft class="h-4 w-4" />
+            </button>
+            <button
                 type="button"
-                size="sm"
-                variant="outline"
-                :class="
-                    editor && editor.isActive({ textAlign: 'center' })
-                        ? 'bg-muted'
-                        : ''
-                "
+                :class="[
+                    toolbarButton,
+                    editor?.isActive({ textAlign: 'center' })
+                        ? 'bg-muted text-foreground'
+                        : '',
+                ]"
                 @click="editor?.chain().focus().setTextAlign('center').run()"
             >
-                C
-            </Button>
-            <Button
+                <AlignCenter class="h-4 w-4" />
+            </button>
+            <button
                 type="button"
-                size="sm"
-                variant="outline"
-                :class="
-                    editor && editor.isActive({ textAlign: 'right' })
-                        ? 'bg-muted'
-                        : ''
-                "
+                :class="[
+                    toolbarButton,
+                    editor?.isActive({ textAlign: 'right' })
+                        ? 'bg-muted text-foreground'
+                        : '',
+                ]"
                 @click="editor?.chain().focus().setTextAlign('right').run()"
             >
-                R
-            </Button>
-            <Button
+                <AlignRight class="h-4 w-4" />
+            </button>
+            <button
                 type="button"
-                size="sm"
-                variant="outline"
-                :class="
-                    editor && editor.isActive({ textAlign: 'justify' })
-                        ? 'bg-muted'
-                        : ''
-                "
+                :class="[
+                    toolbarButton,
+                    editor?.isActive({ textAlign: 'justify' })
+                        ? 'bg-muted text-foreground'
+                        : '',
+                ]"
                 @click="editor?.chain().focus().setTextAlign('justify').run()"
             >
-                J
-            </Button>
+                <AlignJustify class="h-4 w-4" />
+            </button>
         </div>
         <EditorContent :editor="editor" />
     </div>

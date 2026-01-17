@@ -28,6 +28,8 @@ class Diary extends Model
         'weather',
         'leader_person_id',
         'member_person_ids',
+        'other_person_ids',
+        'sss_participants_note',
         'other_participants',
         'work_description',
         'excavated_length_m',
@@ -47,6 +49,7 @@ class Diary extends Model
      */
     protected $casts = [
         'member_person_ids' => 'array',
+        'other_person_ids' => 'array',
         'action_date' => 'date',
         'leader_signed_at' => 'date',
         'club_signed_at' => 'date',

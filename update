@@ -19,13 +19,12 @@ else
   npm run build
 
   #git add public/build .gitignore update upload
-  git commit -a -m "Build update"
 
   if [ -z "$(git status --porcelain)" ]; then
     echo "No changes to commit."
     exit 0
   fi
 
-  git commit -m "Update build"
+  git commit -a -m "Update build"
   git push
 fi

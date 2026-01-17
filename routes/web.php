@@ -69,6 +69,18 @@ Route::get('denniky/{diary}/edit', [DiariesController::class, 'edit'])
 Route::put('denniky/{diary}', [DiariesController::class, 'update'])
     ->middleware(['auth', 'verified'])
     ->name('diaries.update');
+Route::get('denniky/{diary}/pdf', [DiariesController::class, 'downloadPdf'])
+    ->middleware(['auth', 'verified'])
+    ->name('diaries.pdf');
+Route::post('denniky/{diary}/attachments', [DiariesController::class, 'storeAttachments'])
+    ->middleware(['auth', 'verified'])
+    ->name('diaries.attachments.store');
+Route::put('denniky/{diary}/attachments/{archiveDocument}', [DiariesController::class, 'updateAttachment'])
+    ->middleware(['auth', 'verified'])
+    ->name('diaries.attachments.update');
+Route::delete('denniky/{diary}/attachments/{archiveDocument}', [DiariesController::class, 'destroyAttachment'])
+    ->middleware(['auth', 'verified'])
+    ->name('diaries.attachments.destroy');
 
 Route::get('archives', [ArchivesController::class, 'index'])
     ->middleware(['auth', 'verified'])

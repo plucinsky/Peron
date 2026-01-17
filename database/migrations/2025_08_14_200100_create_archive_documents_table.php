@@ -13,7 +13,11 @@ return new class extends Migration
     {
         Schema::create('archive_documents', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('archive_id')->index();
+            $table->unsignedBigInteger('archive_id')->nullable()->index();
+            $table->unsignedBigInteger('diary_id')->nullable()->index();
+            $table->string('relation_type', 50)->nullable();
+            $table->text('caption')->nullable();
+            $table->unsignedInteger('seq')->nullable();
             $table->string('name');
             $table->string('type', 50);
             $table->string('mime_type')->nullable();

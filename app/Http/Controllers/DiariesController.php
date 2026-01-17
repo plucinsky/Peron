@@ -2,12 +2,17 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ArchiveDocument;
 use App\Models\Diary;
 use App\Models\Person;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response as HttpResponse;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
+use Spatie\Browsershot\Browsershot;
 
 class DiariesController extends Controller
 {
@@ -68,6 +73,7 @@ class DiariesController extends Controller
     {
         return Inertia::render('Diaries/Form', [
             'diary' => null,
+            'attachments' => [],
             'persons' => Person::query()
                 ->select('id', 'first_name', 'last_name')
                 ->orderBy('last_name')
@@ -100,6 +106,8 @@ class DiariesController extends Controller
                 'weather',
                 'leader_person_id',
                 'member_person_ids',
+                'other_person_ids',
+                'sss_participants_note',
                 'other_participants',
                 'work_description',
                 'excavated_length_m',
@@ -111,6 +119,22 @@ class DiariesController extends Controller
                 'club_signed_person_id',
                 'club_signed_at',
             ]),
+            'attachments' => ArchiveDocument::query()
+                ->select('id', 'name', 'original_filename', 'caption', 'created_at')
+                ->where('diary_id', $diary->id)
+                ->where('relation_type', 'attachment')
+                ->orderByRaw('seq is null, seq asc')
+                ->orderByDesc('id')
+                ->get()
+                ->map(fn (ArchiveDocument $document) => [
+                    'id' => $document->id,
+                    'name' => $document->name,
+                    'original_filename' => $document->original_filename,
+                    'caption' => $document->caption,
+                    'seq' => $document->seq,
+                    'download_url' => "/archive-documents/{$document->id}/download",
+                    'created_at' => $document->created_at?->toDateTimeString(),
+                ]),
             'persons' => Person::query()
                 ->select('id', 'first_name', 'last_name')
                 ->orderBy('last_name')
@@ -128,6 +152,168 @@ class DiariesController extends Controller
         return to_route('diaries.index');
     }
 
+    public function downloadPdf(Diary $diary): HttpResponse
+    {
+        $persons = Person::query()
+            ->select('id', 'first_name', 'last_name')
+            ->get()
+            ->keyBy('id');
+
+        $logoPath = public_path('assets/images/logo.png');
+        $logoDataUri = null;
+        if (is_file($logoPath)) {
+            $logoDataUri = 'data:image/png;base64,'.base64_encode(file_get_contents($logoPath));
+        }
+
+        $attachments = ArchiveDocument::query()
+            ->where('diary_id', $diary->id)
+            ->where('relation_type', 'attachment')
+            ->orderByRaw('seq is null, seq asc')
+            ->orderBy('id')
+            ->get()
+            ->map(function (ArchiveDocument $document) {
+                $path = $document->storage_path
+                    ? Storage::path($document->storage_path)
+                    : null;
+                $dataUri = null;
+
+                if ($path && is_file($path)) {
+                    $mime = $document->mime_type ?: 'image/jpeg';
+                    $contents = base64_encode(file_get_contents($path));
+                    $dataUri = "data:{$mime};base64,{$contents}";
+                }
+
+                return [
+                    'caption' => $document->caption,
+                    'seq' => $document->seq,
+                    'data_uri' => $dataUri,
+                ];
+            });
+
+        $html = view('diaries.pdf', [
+            'diary' => $diary,
+            'leader' => $persons->get($diary->leader_person_id),
+            'members' => collect($diary->member_person_ids ?? [])
+                ->map(fn ($id) => $persons->get($id))
+                ->filter(),
+            'other_members' => collect($diary->other_person_ids ?? [])
+                ->map(fn ($id) => $persons->get($id))
+                ->filter(),
+            'attachments' => $attachments,
+            'attachmentsCount' => $attachments->count(),
+            'logoDataUri' => $logoDataUri,
+            'formatDate' => fn ($date) => $date
+                ? Carbon::parse($date)->format('d.m.Y')
+                : '',
+        ])->render();
+
+        $pdf = Browsershot::html($html)
+            ->format('A4')
+            ->showBackground()
+            ->margins(10, 10, 10, 10)
+            ->pdf();
+
+        $filename = sprintf('dennik-%s.pdf', $diary->id);
+
+        return response($pdf, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => "inline; filename=\"{$filename}\"",
+        ]);
+    }
+
+    public function storeAttachments(Request $request, Diary $diary): RedirectResponse
+    {
+        $data = $request->validate([
+            'files' => ['required', 'array'],
+            'files.*' => ['file', 'image', 'max:51200'],
+            'captions' => ['nullable', 'array'],
+            'captions.*' => ['nullable', 'string', 'max:255'],
+            'seqs' => ['nullable', 'array'],
+            'seqs.*' => ['nullable', 'integer', 'min:0'],
+            'relation_type' => ['nullable', 'string', 'max:50'],
+            'archive_id' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        $files = $request->file('files', []);
+        $captions = $data['captions'] ?? [];
+        $relationType = $data['relation_type'] ?? 'attachment';
+        $seqs = $data['seqs'] ?? [];
+
+        foreach ($files as $index => $file) {
+            if (!$file) {
+                continue;
+            }
+
+            $extension = strtolower($file->getClientOriginalExtension() ?: 'bin');
+            $mimeType = $file->getClientMimeType() ?? 'application/octet-stream';
+            $originalName = $file->getClientOriginalName();
+            $size = $file->getSize();
+            $name = pathinfo($originalName, PATHINFO_FILENAME) ?: $originalName;
+            $checksum = hash_file('sha256', $file->getRealPath());
+
+            $document = ArchiveDocument::create([
+                'archive_id' => $data['archive_id'] ?? null,
+                'diary_id' => $diary->id,
+                'relation_type' => $relationType,
+                'caption' => $captions[$index] ?? null,
+                'seq' => isset($seqs[$index]) ? (int) $seqs[$index] : null,
+                'name' => $name,
+                'type' => 'image',
+                'mime_type' => $mimeType,
+                'extension' => $extension,
+                'size' => $size,
+                'storage_path' => '',
+                'original_filename' => $originalName,
+                'checksum' => $checksum,
+            ]);
+
+            $bucket = (int) floor($document->id / 50);
+            $path = "documents/{$bucket}/{$document->id}.{$extension}";
+
+            Storage::makeDirectory("documents/{$bucket}");
+            @chmod(Storage::path("documents/{$bucket}"), 0777);
+            Storage::putFileAs("documents/{$bucket}", $file, "{$document->id}.{$extension}");
+            @chmod(Storage::path($path), 0777);
+
+            $document->update(['storage_path' => $path]);
+        }
+
+        return back();
+    }
+
+    public function updateAttachment(
+        Request $request,
+        Diary $diary,
+        ArchiveDocument $archiveDocument
+    ): RedirectResponse {
+        if ($archiveDocument->diary_id !== $diary->id) {
+            abort(404);
+        }
+
+        $data = $request->validate([
+            'caption' => ['nullable', 'string', 'max:255'],
+            'seq' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        $archiveDocument->update([
+            'caption' => $data['caption'] ?? null,
+            'seq' => $data['seq'] ?? null,
+        ]);
+
+        return back();
+    }
+
+    public function destroyAttachment(Diary $diary, ArchiveDocument $archiveDocument): RedirectResponse
+    {
+        if ($archiveDocument->diary_id !== $diary->id) {
+            abort(404);
+        }
+
+        $archiveDocument->delete();
+
+        return back();
+    }
+
     private function validatedData(Request $request): array
     {
         $data = $request->validate([
@@ -142,6 +328,9 @@ class DiariesController extends Controller
             'leader_person_id' => ['nullable', 'integer'],
             'member_person_ids' => ['nullable', 'array'],
             'member_person_ids.*' => ['integer'],
+            'other_person_ids' => ['nullable', 'array'],
+            'other_person_ids.*' => ['integer'],
+            'sss_participants_note' => ['nullable', 'string'],
             'other_participants' => ['nullable', 'string'],
             'work_description' => ['nullable', 'string'],
             'excavated_length_m' => ['nullable', 'numeric', 'min:0'],
@@ -156,6 +345,8 @@ class DiariesController extends Controller
 
         $memberIds = $data['member_person_ids'] ?? [];
         $data['member_person_ids'] = array_values(array_unique(array_filter($memberIds)));
+        $otherIds = $data['other_person_ids'] ?? [];
+        $data['other_person_ids'] = array_values(array_unique(array_filter($otherIds)));
 
         return $data;
     }
