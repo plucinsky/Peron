@@ -4,7 +4,7 @@ set -euo pipefail
 git fetch --all
 git pull --ff-only origin main
 
-php8.4 "$(command -v composer)" install --no-dev --optimize-autoloader
+#php8.4 "$(command -v composer)" install --no-dev --optimize-autoloader
 
 php artisan config:cache
 php artisan route:cache
