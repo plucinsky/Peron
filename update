@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+EXPECTED_DIR="/opt/perun_speleo_spisskabela"
+if [ "$PWD" != "$EXPECTED_DIR" ]; then
+  echo "Tento prikaz moze byt spusteny len na produkcnom serveri."
+  exit 1
+fi
+
 git fetch --all
 git pull --ff-only origin main
 

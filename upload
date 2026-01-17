@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SERVER_DIR="/opt/perun_speleo_spisskabela"
+if [ "$PWD" = "$SERVER_DIR" ]; then
+  echo "Tento prikaz je mozne spustit len na developerskom prostredi."
+  exit 1
+fi
+
 npm run build
 
 git add public/build .gitignore update upload
