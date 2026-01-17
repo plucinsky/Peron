@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
-import { Archive, FileText, LayoutGrid, Mountain, Users } from 'lucide-vue-next';
+import {
+    Archive,
+    FileText,
+    LayoutGrid,
+    Mountain,
+    UserRound,
+    Users,
+} from 'lucide-vue-next';
 
 import NavFooter from '@/components/NavFooter.vue';
 import NavMain from '@/components/NavMain.vue';
@@ -39,6 +46,11 @@ const mainNavItems: NavItem[] = [
         title: 'Jaskyne',
         href: '/caves',
         icon: Mountain,
+    },
+    {
+        title: 'Osoby',
+        href: '/persons',
+        icon: UserRound,
     },
     {
         title: 'Pouzivatelia',

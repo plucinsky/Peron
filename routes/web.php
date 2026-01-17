@@ -3,15 +3,14 @@
 use App\Http\Controllers\ArchiveDocumentsController;
 use App\Http\Controllers\ArchivesController;
 use App\Http\Controllers\CavesController;
+use App\Http\Controllers\PersonsController;
 use App\Http\Controllers\UsersController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
 
 Route::get('/', function () {
-    return Inertia::render('Welcome', [
-        'canRegister' => Features::enabled(Features::registration()),
-    ]);
+    return redirect()->route('login');
 })->name('home');
 
 Route::get('dashboard', function () {
@@ -33,6 +32,16 @@ Route::put('users/{user}/password', [UsersController::class, 'updatePassword'])
 Route::put('users/{user}/status', [UsersController::class, 'updateStatus'])
     ->middleware(['auth', 'verified'])
     ->name('users.status');
+
+Route::get('persons', [PersonsController::class, 'index'])
+    ->middleware(['auth', 'verified'])
+    ->name('persons.index');
+Route::post('persons', [PersonsController::class, 'store'])
+    ->middleware(['auth', 'verified'])
+    ->name('persons.store');
+Route::put('persons/{person}', [PersonsController::class, 'update'])
+    ->middleware(['auth', 'verified'])
+    ->name('persons.update');
 
 Route::get('caves', [CavesController::class, 'index'])
     ->middleware(['auth', 'verified'])
