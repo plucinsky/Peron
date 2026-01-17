@@ -18,7 +18,7 @@ if [ "$PWD" = "$SERVER_DIR" ]; then
 else
   npm run build
 
-  git add public/build
+  git add -A
 
   if [ -z "$(git status --porcelain)" ]; then
     echo "No changes to commit."
