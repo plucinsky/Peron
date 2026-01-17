@@ -33,6 +33,7 @@ class ArchiveDocument extends Model
         'checksum',
         'meta',
         'ocr_text',
+        'processed_diary_data',
         'ocr_status',
         'ocr_error',
         'ocr_processed_at',
@@ -52,6 +53,7 @@ class ArchiveDocument extends Model
     {
         return [
             'meta' => 'array',
+            'processed_diary_data' => 'array',
             'ocr_processed_at' => 'datetime',
             'preview_generated_at' => 'datetime',
         ];

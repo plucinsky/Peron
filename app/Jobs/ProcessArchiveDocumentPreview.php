@@ -30,6 +30,10 @@ class ProcessArchiveDocumentPreview implements ShouldQueue
             return;
         }
 
+        if (in_array($document->preview_status, ['queued', 'processing'], true)) {
+            return;
+        }
+
         $document->update([
             'preview_status' => 'processing',
             'preview_error' => null,

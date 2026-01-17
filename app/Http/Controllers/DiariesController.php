@@ -75,6 +75,7 @@ class DiariesController extends Controller
         return Inertia::render('Diaries/Form', [
             'diary' => null,
             'attachments' => [],
+            'prefill' => session('diary_prefill'),
             'persons' => Person::query()
                 ->select('id', 'first_name', 'last_name')
                 ->orderBy('last_name')

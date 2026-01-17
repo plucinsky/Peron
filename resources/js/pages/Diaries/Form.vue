@@ -81,6 +81,7 @@ interface AttachmentView {
 
 const props = defineProps<{
     diary: DiaryFormData | null;
+    prefill?: Partial<DiaryFormData> | null;
     persons: PersonOption[];
     attachments: AttachmentRow[];
 }>();
@@ -373,15 +374,19 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ];
 
+const prefill = props.prefill ?? {};
+
 const form = useForm({
-    report_number: props.diary?.report_number ?? '',
-    locality_name: props.diary?.locality_name ?? '',
-    locality_position: props.diary?.locality_position ?? '',
-    karst_area: props.diary?.karst_area ?? '',
-    orographic_unit: props.diary?.orographic_unit ?? '',
-    action_date: props.diary?.action_date ?? '',
-    work_time: props.diary?.work_time ?? '',
-    weather: props.diary?.weather ?? '',
+    report_number: props.diary?.report_number ?? prefill.report_number ?? '',
+    locality_name: props.diary?.locality_name ?? prefill.locality_name ?? '',
+    locality_position:
+        props.diary?.locality_position ?? prefill.locality_position ?? '',
+    karst_area: props.diary?.karst_area ?? prefill.karst_area ?? '',
+    orographic_unit:
+        props.diary?.orographic_unit ?? prefill.orographic_unit ?? '',
+    action_date: props.diary?.action_date ?? prefill.action_date ?? '',
+    work_time: props.diary?.work_time ?? prefill.work_time ?? '',
+    weather: props.diary?.weather ?? prefill.weather ?? '',
     leader_person_id: props.diary?.leader_person_id
         ? String(props.diary?.leader_person_id)
         : '',
@@ -391,21 +396,24 @@ const form = useForm({
     other_person_ids: (props.diary?.other_person_ids ?? []).map((id) =>
         String(id)
     ),
-    sss_participants_note: props.diary?.sss_participants_note ?? '',
-    other_participants: props.diary?.other_participants ?? '',
-    work_description: props.diary?.work_description ?? '',
+    sss_participants_note:
+        props.diary?.sss_participants_note ?? prefill.sss_participants_note ?? '',
+    other_participants:
+        props.diary?.other_participants ?? prefill.other_participants ?? '',
+    work_description:
+        props.diary?.work_description ?? prefill.work_description ?? '',
     excavated_length_m: props.diary?.excavated_length_m
         ? String(props.diary?.excavated_length_m)
-        : '',
+        : prefill.excavated_length_m ?? '',
     discovered_length_m: props.diary?.discovered_length_m
         ? String(props.diary?.discovered_length_m)
-        : '',
+        : prefill.discovered_length_m ?? '',
     surveyed_length_m: props.diary?.surveyed_length_m
         ? String(props.diary?.surveyed_length_m)
-        : '',
+        : prefill.surveyed_length_m ?? '',
     surveyed_depth_m: props.diary?.surveyed_depth_m
         ? String(props.diary?.surveyed_depth_m)
-        : '',
+        : prefill.surveyed_depth_m ?? '',
     leader_signed_person_id: props.diary?.leader_signed_person_id
         ? String(props.diary?.leader_signed_person_id)
         : '',

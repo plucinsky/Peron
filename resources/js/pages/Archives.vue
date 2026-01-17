@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3';
-import { Upload } from 'lucide-vue-next';
+import { Download, Eye, Loader2, Minus, Plus, Upload } from 'lucide-vue-next';
 import { computed, onUnmounted, ref, watch, watchEffect } from 'vue';
 
 import InputError from '@/components/InputError.vue';
@@ -34,6 +34,8 @@ interface DocumentRow {
     storage_path: string | null;
     original_filename: string | null;
     ocr_status: string | null;
+    ocr_text: string | null;
+    processed_diary_data: Record<string, unknown> | null;
     preview_status: string | null;
     preview_page_count: number | null;
 }
@@ -337,12 +339,54 @@ function triggerUploadPicker() {
 }
 
 function startOcr(documentId: number) {
-    router.post(`/archive-documents/${documentId}/ocr`, {}, { preserveScroll: true });
+    router.post(
+        `/archive-documents/${documentId}/ocr`,
+        {},
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                router.reload({ only: ['documents'], preserveScroll: true });
+            },
+        }
+    );
+}
+
+function generateDiary(documentId: number) {
+    router.post(
+        `/archive-documents/${documentId}/generate-diary`,
+        {},
+        { preserveScroll: true }
+    );
+}
+
+function processDiary(documentId: number) {
+    processingDiaryIds.value.add(documentId);
+    router.post(
+        `/archive-documents/${documentId}/process-diary`,
+        {},
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                router.reload({ only: ['documents'], preserveScroll: true });
+            },
+            onFinish: () => {
+                const next = new Set(processingDiaryIds.value);
+                next.delete(documentId);
+                processingDiaryIds.value = next;
+            },
+        }
+    );
 }
 
 const showPreviewModal = ref(false);
 const previewDocument = ref<DocumentRow | null>(null);
 const previewPage = ref(1);
+const zoomScale = ref(1);
+const previewTab = ref<'preview' | 'ocr' | 'processed'>('preview');
+const processingDiaryIds = ref<Set<number>>(new Set());
+const zoomStep = 0.1;
+const zoomMin = 0.2;
+const zoomMax = 2.5;
 let previewPoller: ReturnType<typeof setInterval> | null = null;
 
 const previewImageUrl = computed(() => {
@@ -355,6 +399,8 @@ const previewImageUrl = computed(() => {
 function openPreview(document: DocumentRow) {
     previewDocument.value = document;
     previewPage.value = 1;
+    zoomScale.value = 1;
+    previewTab.value = 'preview';
     showPreviewModal.value = true;
 
     if (document.preview_status !== 'done') {
@@ -370,6 +416,8 @@ function closePreviewModal() {
     showPreviewModal.value = false;
     previewDocument.value = null;
     previewPage.value = 1;
+    zoomScale.value = 1;
+    previewTab.value = 'preview';
     stopPreviewPolling();
 }
 
@@ -384,6 +432,14 @@ function goToNextPage() {
     if (previewPage.value < total) {
         previewPage.value += 1;
     }
+}
+
+function zoomIn() {
+    zoomScale.value = Math.min(zoomMax, +(zoomScale.value + zoomStep).toFixed(2));
+}
+
+function zoomOut() {
+    zoomScale.value = Math.max(zoomMin, +(zoomScale.value - zoomStep).toFixed(2));
 }
 
 function stopPreviewPolling() {
@@ -401,7 +457,12 @@ watch(
             return;
         }
 
-        if (!previewDocument.value || previewDocument.value.preview_status === 'done') {
+        if (
+            !previewDocument.value ||
+            (previewDocument.value.preview_status === 'done' &&
+                previewDocument.value.ocr_status !== 'processing' &&
+                previewDocument.value.ocr_status !== 'queued')
+        ) {
             stopPreviewPolling();
             return;
         }
@@ -583,26 +644,23 @@ onUnmounted(() => {
                                     </span>
                                 </td>
                                 <td class="px-4 py-2">
-                                    <a
-                                        :href="`/archive-documents/${document.id}/download`"
-                                        class="text-sm font-medium underline underline-offset-4"
-                                    >
-                                        Stiahnuť
-                                    </a>
                                     <button
                                         type="button"
-                                        class="ml-3 text-sm font-medium underline underline-offset-4"
+                                        class="inline-flex items-center justify-center rounded-md border border-transparent p-1 text-muted-foreground transition hover:border-border hover:bg-muted hover:text-foreground"
+                                        aria-label="Zobraziť"
+                                        title="Zobraziť"
                                         @click="openPreview(document)"
                                     >
-                                        Zobraziť
+                                        <Eye class="h-4 w-4" />
                                     </button>
-                                    <button
-                                        type="button"
-                                        class="ml-3 text-sm font-medium underline underline-offset-4"
-                                        @click="startOcr(document.id)"
+                                    <a
+                                        :href="`/archive-documents/${document.id}/download`"
+                                        class="ml-2 inline-flex items-center justify-center rounded-md border border-transparent p-1 text-muted-foreground transition hover:border-border hover:bg-muted hover:text-foreground"
+                                        aria-label="Stiahnuť"
+                                        title="Stiahnuť"
                                     >
-                                        Spustiť OCR
-                                    </button>
+                                        <Download class="h-4 w-4" />
+                                    </a>
                                 </td>
                             </tr>
                             <tr v-if="filteredDocuments.length === 0">
@@ -829,9 +887,9 @@ onUnmounted(() => {
     </Dialog>
 
     <Dialog :open="showPreviewModal" @update:open="closePreviewModal">
-        <DialogContent class="sm:max-w-5xl max-h-[85vh] overflow-hidden">
+        <DialogContent class="sm:max-w-6xl max-h-[85vh] overflow-hidden">
             <DialogHeader>
-                <DialogTitle>Náhľad dokumentu</DialogTitle>
+                <DialogTitle>Detail dokumentu</DialogTitle>
             </DialogHeader>
 
             <div class="flex max-h-[70vh] flex-col gap-4">
@@ -841,50 +899,188 @@ onUnmounted(() => {
                 >
                     Vyber dokument.
                 </div>
-                <div v-else-if="previewDocument.preview_status !== 'done'">
-                    <div class="flex items-center gap-3 text-sm text-muted-foreground">
-                        <span class="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-muted-foreground"></span>
-                        <span>Náhľad sa generuje. Skús to o chvíľu znova.</span>
+                <div v-else class="flex min-h-0 flex-1 flex-col gap-4">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <Button
+                            type="button"
+                            size="sm"
+                            :variant="previewTab === 'preview' ? 'default' : 'outline'"
+                            @click="previewTab = 'preview'"
+                        >
+                            Náhľad
+                        </Button>
+                        <Button
+                            type="button"
+                            size="sm"
+                            :variant="previewTab === 'ocr' ? 'default' : 'outline'"
+                            @click="previewTab = 'ocr'"
+                        >
+                            OCR prepis
+                        </Button>
+                        <Button
+                            type="button"
+                            size="sm"
+                            :variant="previewTab === 'processed' ? 'default' : 'outline'"
+                            @click="previewTab = 'processed'"
+                        >
+                            Spracované údaje
+                        </Button>
                     </div>
-                </div>
-                <div v-else class="min-h-0 flex-1 overflow-auto">
-                    <img
-                        :src="previewImageUrl"
-                        alt="Náhľad dokumentu"
-                        class="mx-auto max-h-[60vh] w-auto rounded-md border"
-                    />
-                </div>
 
-                <div
-                    v-if="
-                        previewDocument &&
-                        previewDocument.preview_status === 'done'
-                    "
-                    class="flex items-center justify-between"
-                >
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        :disabled="previewPage <= 1"
-                        @click="goToPrevPage"
+                    <div
+                        v-show="previewTab === 'preview'"
+                        class="flex min-h-0 flex-col rounded-md border bg-background p-3 h-[70vh] overflow-hidden"
                     >
-                        Predchádzajúca
-                    </Button>
-                    <div class="text-sm text-muted-foreground">
-                        Strana {{ previewPage }} /
-                        {{ previewDocument.preview_page_count ?? 1 }}
+                        <div
+                            v-if="previewDocument.preview_status !== 'done'"
+                            class="flex items-center gap-3 text-sm text-muted-foreground"
+                        >
+                            <span class="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-muted-foreground"></span>
+                            <span>Náhľad sa generuje. Skús to o chvíľu znova.</span>
+                        </div>
+                        <div v-else class="min-h-0 flex-1 overflow-auto">
+                            <div
+                                class="origin-top-left inline-block"
+                                :style="{
+                                    transform: `scale(${zoomScale})`,
+                                }"
+                            >
+                                <img
+                                    :src="previewImageUrl"
+                                    alt="Náhľad dokumentu"
+                                    class="max-w-none rounded-md border"
+                                />
+                            </div>
+                        </div>
+                        <div
+                            v-if="previewDocument && previewDocument.preview_status === 'done'"
+                            class="mt-3 flex flex-wrap items-center justify-between gap-2"
+                        >
+                            <div class="flex items-center gap-2">
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    :disabled="zoomScale <= zoomMin"
+                                    @click="zoomOut"
+                                    aria-label="Oddialiť"
+                                    title="Oddialiť"
+                                >
+                                    <Minus class="h-4 w-4" />
+                                </Button>
+                                <div class="min-w-[56px] text-center text-xs font-medium text-muted-foreground">
+                                    {{ Math.round(zoomScale * 100) }}%
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    size="icon"
+                                    :disabled="zoomScale >= zoomMax"
+                                    @click="zoomIn"
+                                    aria-label="Priblížiť"
+                                    title="Priblížiť"
+                                >
+                                    <Plus class="h-4 w-4" />
+                                </Button>
+                            </div>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                :disabled="previewPage <= 1"
+                                @click="goToPrevPage"
+                            >
+                                Predchádzajúca
+                            </Button>
+                            <div class="text-sm text-muted-foreground">
+                                Strana {{ previewPage }} /
+                                {{ previewDocument.preview_page_count ?? 1 }}
+                            </div>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                :disabled="
+                                    previewPage >=
+                                    (previewDocument.preview_page_count ?? 1)
+                                "
+                                @click="goToNextPage"
+                            >
+                                Nasledujúca
+                            </Button>
+                        </div>
                     </div>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        :disabled="
-                            previewPage >=
-                            (previewDocument.preview_page_count ?? 1)
-                        "
-                        @click="goToNextPage"
+
+                    <div
+                        v-show="previewTab === 'ocr'"
+                        class="flex min-h-0 flex-col rounded-md border bg-background p-3 h-[70vh] overflow-hidden"
                     >
-                        Nasledujúca
-                    </Button>
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <div class="text-sm font-medium">OCR prepis</div>
+                            <Button
+                                type="button"
+                                size="sm"
+                                @click="startOcr(previewDocument.id)"
+                            >
+                                Vygenerovať OCR
+                            </Button>
+                        </div>
+                        <div class="text-xs text-muted-foreground">
+                            {{
+                                previewDocument.ocr_status === 'done'
+                                    ? 'Hotovo'
+                                    : previewDocument.ocr_status === 'processing'
+                                      ? 'Spracúva sa'
+                                      : previewDocument.ocr_status === 'queued'
+                                        ? 'V rade'
+                                        : previewDocument.ocr_status === 'failed'
+                                          ? 'Chyba'
+                                          : 'Nezadané'
+                            }}
+                        </div>
+                        <div class="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs">
+                            {{
+                                previewDocument.ocr_text ||
+                                'OCR prepis zatiaľ nie je dostupný.'
+                            }}
+                        </div>
+                    </div>
+
+                    <div
+                        v-show="previewTab === 'processed'"
+                        class="flex min-h-0 flex-col rounded-md border bg-background p-3 h-[70vh] overflow-hidden"
+                    >
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <div class="text-sm font-medium">Spracované údaje</div>
+                            <div class="flex flex-wrap gap-2">
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    @click="processDiary(previewDocument.id)"
+                                    :disabled="
+                                        !previewDocument.ocr_text ||
+                                        processingDiaryIds.has(previewDocument.id)
+                                    "
+                                >
+                                    <Loader2
+                                        v-if="processingDiaryIds.has(previewDocument.id)"
+                                        class="h-4 w-4 animate-spin"
+                                    />
+                                    <span v-else>Spracovať</span>
+                                </Button>
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    @click="generateDiary(previewDocument.id)"
+                                    :disabled="!previewDocument.ocr_text"
+                                >
+                                    Vygenerovať denník
+                                </Button>
+                            </div>
+                        </div>
+                        <div class="min-h-0 flex-1 overflow-auto rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs">
+                            <pre class="whitespace-pre-wrap">
+{{ previewDocument.processed_diary_data ? JSON.stringify(previewDocument.processed_diary_data, null, 2) : 'Spracované údaje zatiaľ nie sú dostupné.' }}
+                            </pre>
+                        </div>
+                    </div>
                 </div>
 
                 <DialogFooter class="gap-2">

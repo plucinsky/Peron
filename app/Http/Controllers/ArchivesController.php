@@ -31,7 +31,9 @@ class ArchivesController extends Controller
                     'ocr_status',
                     'preview_status',
                     'preview_page_count',
-                    'preview_extension'
+                    'preview_extension',
+                    'ocr_text',
+                    'processed_diary_data'
                 )
                 ->orderBy('name')
                 ->get(),

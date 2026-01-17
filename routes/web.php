@@ -104,6 +104,12 @@ Route::get('archive-documents/{archiveDocument}/download', [ArchiveDocumentsCont
 Route::post('archive-documents/{archiveDocument}/ocr', [ArchiveDocumentsController::class, 'startOcr'])
     ->middleware(['auth', 'verified'])
     ->name('archive-documents.ocr');
+Route::post('archive-documents/{archiveDocument}/generate-diary', [ArchiveDocumentsController::class, 'generateDiary'])
+    ->middleware(['auth', 'verified'])
+    ->name('archive-documents.generate-diary');
+Route::post('archive-documents/{archiveDocument}/process-diary', [ArchiveDocumentsController::class, 'processDiary'])
+    ->middleware(['auth', 'verified'])
+    ->name('archive-documents.process-diary');
 Route::post('archive-documents/{archiveDocument}/preview', [ArchiveDocumentsController::class, 'startPreview'])
     ->middleware(['auth', 'verified'])
     ->name('archive-documents.preview');
