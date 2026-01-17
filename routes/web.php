@@ -113,6 +113,9 @@ Route::post('archive-documents/{archiveDocument}/process-diary', [ArchiveDocumen
 Route::post('archive-documents/{archiveDocument}/preview', [ArchiveDocumentsController::class, 'startPreview'])
     ->middleware(['auth', 'verified'])
     ->name('archive-documents.preview');
+Route::post('archive-documents/{archiveDocument}/preview/regenerate', [ArchiveDocumentsController::class, 'regeneratePreview'])
+    ->middleware(['auth', 'verified'])
+    ->name('archive-documents.preview.regenerate');
 Route::get('archive-documents/{archiveDocument}/preview/{page}', [ArchiveDocumentsController::class, 'previewPage'])
     ->middleware(['auth', 'verified'])
     ->name('archive-documents.preview-page');

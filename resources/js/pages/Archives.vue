@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3';
-import { Download, Eye, Loader2, Minus, Plus, Upload } from 'lucide-vue-next';
+import {
+    Download,
+    Eye,
+    Loader2,
+    Minus,
+    Plus,
+    RefreshCw,
+    Upload,
+} from 'lucide-vue-next';
 import { computed, onUnmounted, ref, watch, watchEffect } from 'vue';
 
 import InputError from '@/components/InputError.vue';
@@ -375,6 +383,14 @@ function processDiary(documentId: number) {
                 processingDiaryIds.value = next;
             },
         }
+    );
+}
+
+function regeneratePreview(documentId: number) {
+    router.post(
+        `/archive-documents/${documentId}/preview/regenerate`,
+        {},
+        { preserveScroll: true }
     );
 }
 
@@ -931,6 +947,21 @@ onUnmounted(() => {
                         v-show="previewTab === 'preview'"
                         class="flex min-h-0 flex-col rounded-md border bg-background p-3 h-[70vh] overflow-hidden"
                     >
+                        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                            <div class="text-sm font-medium">Náhľad</div>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                :disabled="
+                                    previewDocument.preview_status === 'queued' ||
+                                    previewDocument.preview_status === 'processing'
+                                "
+                                @click="regeneratePreview(previewDocument.id)"
+                            >
+                                <RefreshCw class="mr-2 h-4 w-4" />
+                                Pregenerovať náhľad
+                            </Button>
+                        </div>
                         <div
                             v-if="previewDocument.preview_status !== 'done'"
                             class="flex items-center gap-3 text-sm text-muted-foreground"

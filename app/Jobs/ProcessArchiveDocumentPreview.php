@@ -8,6 +8,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Http\File;
@@ -27,12 +28,25 @@ class ProcessArchiveDocumentPreview implements ShouldQueue
     {
         $document = ArchiveDocument::find($this->archiveDocumentId);
         if (!$document || !$document->storage_path || !Storage::exists($document->storage_path)) {
+            Log::warning('Preview job skipped: missing document or file.', [
+                'archive_document_id' => $this->archiveDocumentId,
+            ]);
             return;
         }
 
-        if (in_array($document->preview_status, ['queued', 'processing'], true)) {
+        if ($document->preview_status === 'processing') {
+            Log::info('Preview job skipped: already processing.', [
+                'archive_document_id' => $document->id,
+                'preview_status' => $document->preview_status,
+            ]);
             return;
         }
+
+        Log::info('Preview job started.', [
+            'archive_document_id' => $document->id,
+            'extension' => $document->extension,
+            'storage_path' => $document->storage_path,
+        ]);
 
         $document->update([
             'preview_status' => 'processing',
@@ -51,13 +65,25 @@ class ProcessArchiveDocumentPreview implements ShouldQueue
 
         try {
             if ($extension === 'pdf') {
+                Log::info('Preview job: converting PDF to images.', [
+                    'archive_document_id' => $document->id,
+                ]);
                 $pageCount = $this->convertPdfToImages($sourcePath, $tmpDir);
                 $previewExtension = 'png';
             } elseif (in_array($extension, ['doc', 'docx'], true)) {
+                Log::info('Preview job: converting Word to PDF.', [
+                    'archive_document_id' => $document->id,
+                ]);
                 $pdfPath = $this->convertWordToPdf($sourcePath, $tmpDir);
+                Log::info('Preview job: converting PDF to images.', [
+                    'archive_document_id' => $document->id,
+                ]);
                 $pageCount = $this->convertPdfToImages($pdfPath, $tmpDir);
                 $previewExtension = 'png';
             } elseif (in_array($extension, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'svg'], true)) {
+                Log::info('Preview job: copying image as preview.', [
+                    'archive_document_id' => $document->id,
+                ]);
                 $pageCount = $this->copyImageAsPreview($sourcePath, $tmpDir, $extension);
                 $previewExtension = $extension;
             } else {
@@ -72,10 +98,21 @@ class ProcessArchiveDocumentPreview implements ShouldQueue
                 'preview_extension' => $previewExtension,
                 'preview_generated_at' => now(),
             ]);
+
+            Log::info('Preview job finished.', [
+                'archive_document_id' => $document->id,
+                'pages' => $storedCount,
+                'preview_extension' => $previewExtension,
+            ]);
         } catch (Throwable $exception) {
             $document->update([
                 'preview_status' => 'failed',
                 'preview_error' => $exception->getMessage(),
+            ]);
+
+            Log::error('Preview job failed.', [
+                'archive_document_id' => $document->id,
+                'error' => $exception->getMessage(),
             ]);
         } finally {
             $this->cleanupDir($tmpDir);

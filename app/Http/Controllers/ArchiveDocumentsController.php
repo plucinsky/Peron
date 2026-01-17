@@ -178,6 +178,27 @@ class ArchiveDocumentsController extends Controller
         return to_route('archives.index');
     }
 
+    public function regeneratePreview(ArchiveDocument $archiveDocument): RedirectResponse
+    {
+        if (!$archiveDocument->storage_path || !Storage::exists($archiveDocument->storage_path)) {
+            return to_route('archives.index');
+        }
+
+        Storage::deleteDirectory("previews/{$archiveDocument->id}");
+
+        $archiveDocument->update([
+            'preview_status' => 'queued',
+            'preview_error' => null,
+            'preview_page_count' => null,
+            'preview_extension' => null,
+            'preview_generated_at' => null,
+        ]);
+
+        ProcessArchiveDocumentPreview::dispatch($archiveDocument->id);
+
+        return to_route('archives.index');
+    }
+
     public function previewPage(ArchiveDocument $archiveDocument, int $page): StreamedResponse
     {
         if ($page < 1) {
