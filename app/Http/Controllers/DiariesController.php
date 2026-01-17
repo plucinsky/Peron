@@ -211,6 +211,11 @@ class DiariesController extends Controller
             ->setChromePath(env('BROWSERSHOT_CHROME_PATH', '/snap/bin/chromium'))
             ->setNodeBinary(env('BROWSERSHOT_NODE_BINARY', '/usr/bin/node'))
             ->setNpmBinary(env('BROWSERSHOT_NPM_BINARY', '/usr/bin/npm'))
+            ->addChromiumArguments([
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+            ])
             ->format('A4')
             ->showBackground()
             ->margins(10, 10, 10, 10)
