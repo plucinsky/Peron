@@ -140,9 +140,11 @@ class ProcessArchiveDocumentPreview implements ShouldQueue
         sort($files);
 
         $count = 0;
+        @chmod(Storage::path("previews/{$documentId}"), 0777);
         foreach ($files as $filePath) {
             $basename = basename($filePath);
             Storage::putFileAs("previews/{$documentId}", new File($filePath), $basename);
+            @chmod(Storage::path("previews/{$documentId}/{$basename}"), 0777);
             $count++;
         }
 

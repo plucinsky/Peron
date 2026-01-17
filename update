@@ -13,6 +13,8 @@ if [ "$PWD" = "$SERVER_DIR" ]; then
   php8.4 artisan route:cache
   php8.4 artisan view:cache
 
+  supervisorctl restart perun-laravel-worker:*
+
 else
   npm run build
 
