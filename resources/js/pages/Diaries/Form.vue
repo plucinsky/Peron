@@ -89,13 +89,13 @@ const isEdit = computed(() => Boolean(props.diary?.id));
 
 const tabs = computed(() => {
     const base = [
-        'Zakladne informacie',
-        'Ucastnici akcie',
-        'Pracovna cinnost',
-        'Zaverecna cast',
+        'Základné informácie',
+        'Účastníci akcie',
+        'Pracovná činnosť',
+        'Záverečná časť',
     ] as const;
     if (props.diary?.id) {
-        return [...base, 'Prilohy'] as const;
+        return [...base, 'Prílohy'] as const;
     }
     return base;
 });
@@ -482,16 +482,16 @@ function submit() {
 
 <template>
     <AppLayout :breadcrumbs="breadcrumbs">
-        <Head :title="isEdit ? 'Upravit dennik' : 'Vytvorit dennik'" />
+        <Head :title="isEdit ? 'Upraviť denník' : 'Vytvoriť denník'" />
 
         <div class="flex flex-col gap-6 p-4">
             <div class="flex flex-wrap items-center justify-between gap-4">
                 <div>
                     <h1 class="text-2xl font-semibold">
-                        {{ isEdit ? 'Upravit dennik' : 'Vytvorit dennik' }}
+                        {{ isEdit ? 'Upraviť denník' : 'Vytvoriť denník' }}
                     </h1>
                     <p class="text-sm text-muted-foreground">
-                        Udaje zodpovedaju rozlozeniu technickeho dennika.
+                        Údaje zodpovedajú rozloženiu technického denníka.
                     </p>
                 </div>
                 <div class="flex flex-wrap gap-2">
@@ -501,15 +501,15 @@ function submit() {
                         type="button"
                         @click="downloadAttachment(`/denniky/${props.diary.id}/pdf`)"
                     >
-                        Stiahnut PDF
+                        Stiahnuť PDF
                     </Button>
                     <Button variant="outline" as-child>
-                        <Link href="/denniky">Spat na zoznam</Link>
+                        <Link href="/denniky">Späť na zoznam</Link>
                     </Button>
                 </div>
             </div>
 
-            <form class="mx-auto w-full max-w-6xl space-y-6" @submit.prevent="submit">
+            <form class="w-full max-w-6xl space-y-6" @submit.prevent="submit">
                 <div class="sticky top-0 z-10 rounded-md border bg-background/90 p-2 shadow-sm backdrop-blur">
                     <button
                         v-for="tab in tabs"
@@ -528,13 +528,13 @@ function submit() {
                 </div>
 
                 <div
-                    v-show="activeTab === 'Zakladne informacie'"
+                    v-show="activeTab === 'Základné informácie'"
                     class="rounded-md border border-sidebar-border bg-sidebar p-4 [&_input]:bg-background [&_select]:bg-background [&_textarea]:bg-background"
                 >
-                    <h2 class="text-lg font-semibold">Zakladne informacie</h2>
+                    <h2 class="text-lg font-semibold">Základné informácie</h2>
                     <div class="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                         <div class="grid gap-2">
-                            <Label for="report-number">Cislo dennika</Label>
+                            <Label for="report-number">Číslo denníka</Label>
                             <Input
                                 id="report-number"
                                 v-model="form.report_number"
@@ -561,7 +561,7 @@ function submit() {
                             />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="karst-area">Krasove uzemie</Label>
+                            <Label for="karst-area">Krasové územie</Label>
                             <Input
                                 id="karst-area"
                                 v-model="form.karst_area"
@@ -569,7 +569,7 @@ function submit() {
                             <InputError :message="form.errors.karst_area" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="orographic-unit">Orograficky celok</Label>
+                            <Label for="orographic-unit">Orografický celok</Label>
                             <Input
                                 id="orographic-unit"
                                 v-model="form.orographic_unit"
@@ -579,11 +579,11 @@ function submit() {
                             />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="leader-person">Veduci akcie</Label>
+                            <Label for="leader-person">Vedúci akcie</Label>
                             <PersonSelect
                                 v-model="form.leader_person_id"
                                 :options="props.persons"
-                                placeholder="Vyberte veduceho"
+                                placeholder="Vyberte vedúceho"
                             />
                             <InputError
                                 :message="form.errors.leader_person_id"
@@ -593,14 +593,14 @@ function submit() {
                 </div>
 
                 <div
-                    v-show="activeTab === 'Ucastnici akcie'"
+                    v-show="activeTab === 'Účastníci akcie'"
                     class="rounded-md border border-sidebar-border bg-sidebar p-4 [&_input]:bg-background [&_select]:bg-background [&_textarea]:bg-background"
                 >
-                    <h2 class="text-lg font-semibold">Ucastnici akcie</h2>
+                    <h2 class="text-lg font-semibold">Účastníci akcie</h2>
                     <div class="mt-4 grid gap-6 lg:grid-cols-2 lg:items-start">
                         <div class="grid gap-4">
                             <div class="grid gap-3">
-                                <Label for="member-search">Clenovia SSS</Label>
+                                <Label for="member-search">Členovia SSS</Label>
                                 <PersonMultiSelect
                                     v-model="form.member_person_ids"
                                     :options="props.persons"
@@ -610,7 +610,7 @@ function submit() {
                             </div>
                             <div class="grid gap-2">
                                 <Label for="sss-participants-note">
-                                    Doplnujuca poznamka k clenov SSS
+                                    Dopĺňajúca poznámka k členom SSS
                                 </Label>
                                 <textarea
                                     id="sss-participants-note"
@@ -625,17 +625,17 @@ function submit() {
                         </div>
                         <div class="grid gap-4 lg:self-start">
                             <div class="grid gap-3">
-                                <Label for="other-persons">Ini ucastnici</Label>
+                                <Label for="other-persons">Iní účastníci</Label>
                                 <PersonMultiSelect
                                     v-model="form.other_person_ids"
                                     :options="props.persons"
-                                    placeholder="Zacnite pisat meno"
+                                    placeholder="Začnite písať meno"
                                 />
                                 <InputError :message="form.errors.other_person_ids" />
                             </div>
                             <div class="grid gap-2">
                                 <Label for="other-participants">
-                                    Doplnujuca poznamka k inym ucastnikom
+                                    Dopĺňajúca poznámka k iným účastníkom
                                 </Label>
                                 <textarea
                                     id="other-participants"
@@ -652,14 +652,14 @@ function submit() {
                 </div>
 
                 <div
-                    v-show="activeTab === 'Pracovna cinnost'"
+                    v-show="activeTab === 'Pracovná činnosť'"
                     class="rounded-md border border-sidebar-border bg-sidebar p-4 [&_input]:bg-background [&_select]:bg-background [&_textarea]:bg-background"
                 >
-                    <h2 class="text-lg font-semibold">Pracovna cinnost</h2>
+                    <h2 class="text-lg font-semibold">Pracovná činnosť</h2>
                     <div class="mt-4 grid gap-4 md:grid-cols-[1fr_2fr] md:items-start">
                         <div class="grid gap-4">
                             <div class="grid gap-2">
-                                <Label for="action-date">Datum</Label>
+                                <Label for="action-date">Dátum</Label>
                                 <Input
                                     id="action-date"
                                     type="date"
@@ -668,7 +668,7 @@ function submit() {
                                 <InputError :message="form.errors.action_date" />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="work-time">Pracovny cas</Label>
+                                <Label for="work-time">Pracovný čas</Label>
                                 <Input
                                     id="work-time"
                                     v-model="form.work_time"
@@ -678,7 +678,7 @@ function submit() {
                             </div>
                         </div>
                         <div class="grid gap-2 md:self-start">
-                            <Label for="weather">Pocasie pocas akcie</Label>
+                            <Label for="weather">Počasie počas akcie</Label>
                             <textarea
                                 id="weather"
                                 rows="3"
@@ -696,13 +696,13 @@ function submit() {
                 </div>
 
                 <div
-                    v-show="activeTab === 'Zaverecna cast'"
+                    v-show="activeTab === 'Záverečná časť'"
                     class="rounded-md border border-sidebar-border bg-sidebar p-4 [&_input]:bg-background [&_select]:bg-background [&_textarea]:bg-background"
                 >
                     <h2 class="text-lg font-semibold">Metriky</h2>
                     <div class="mt-4 grid gap-4 md:grid-cols-2">
                         <div class="grid gap-2">
-                            <Label for="excavated-length">Vyhlbene (dlzka) [m]</Label>
+                            <Label for="excavated-length">Vyhĺbené (dĺžka) [m]</Label>
                             <Input
                                 id="excavated-length"
                                 type="number"
@@ -715,7 +715,7 @@ function submit() {
                             />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="discovered-length">Objavene (dlzka) [m]</Label>
+                            <Label for="discovered-length">Objavené (dĺžka) [m]</Label>
                             <Input
                                 id="discovered-length"
                                 type="number"
@@ -728,7 +728,7 @@ function submit() {
                             />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="surveyed-length">Zamerane (dlzka) [m]</Label>
+                            <Label for="surveyed-length">Zamerané (dĺžka) [m]</Label>
                             <Input
                                 id="surveyed-length"
                                 type="number"
@@ -741,7 +741,7 @@ function submit() {
                             />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="surveyed-depth">Zamerane (hlbka) [m]</Label>
+                            <Label for="surveyed-depth">Zamerané (hĺbka) [m]</Label>
                             <Input
                                 id="surveyed-depth"
                                 type="number"
@@ -760,7 +760,7 @@ function submit() {
                         <div class="mt-4 grid gap-4 md:grid-cols-2">
                             <div class="grid gap-2">
                                 <Label for="leader-signed-person">
-                                    Datum a podpis veduceho akcie
+                                    Dátum a podpis vedúceho akcie
                                 </Label>
                                 <PersonSelect
                                     v-model="form.leader_signed_person_id"
@@ -772,7 +772,7 @@ function submit() {
                                 />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="leader-signed-at">Datum podpisu</Label>
+                                <Label for="leader-signed-at">Dátum podpisu</Label>
                                 <Input
                                     id="leader-signed-at"
                                     type="date"
@@ -784,7 +784,7 @@ function submit() {
                             </div>
                             <div class="grid gap-2">
                                 <Label for="club-signed-person">
-                                    Datum a podpis veduceho klubu
+                                    Dátum a podpis vedúceho klubu
                                 </Label>
                                 <PersonSelect
                                     v-model="form.club_signed_person_id"
@@ -796,7 +796,7 @@ function submit() {
                                 />
                             </div>
                             <div class="grid gap-2">
-                                <Label for="club-signed-at">Datum podpisu</Label>
+                                <Label for="club-signed-at">Dátum podpisu</Label>
                                 <Input
                                     id="club-signed-at"
                                     type="date"
@@ -811,13 +811,13 @@ function submit() {
                 </div>
 
                 <div
-                    v-show="activeTab === 'Prilohy'"
+                    v-show="activeTab === 'Prílohy'"
                     class="rounded-md border border-sidebar-border bg-sidebar p-4 [&_input]:bg-background [&_select]:bg-background [&_textarea]:bg-background"
                 >
-                    <h2 class="text-lg font-semibold">Prilohy</h2>
+                    <h2 class="text-lg font-semibold">Prílohy</h2>
 
                     <div v-if="!props.diary?.id" class="mt-4 text-sm text-muted-foreground">
-                        Prilohy je mozne pridat az po ulozeni dennika.
+                        Prílohy je možné pridať až po uložení denníka.
                     </div>
 
                     <div v-else class="mt-4 space-y-6">
@@ -844,13 +844,13 @@ function submit() {
                                 <Upload class="h-6 w-6" />
                             </div>
                             <div class="text-sm font-medium text-foreground">
-                                Pretiahnite obrazky sem alebo kliknite.
+                                Pretiahnite obrázky sem alebo kliknite.
                             </div>
                         </div>
 
                         <div v-if="combinedAttachments.length > 0" class="space-y-2">
                             <h3 class="text-sm font-semibold text-muted-foreground">
-                                Prilohy
+                                Prílohy
                             </h3>
                             <div class="rounded-md border bg-background">
                                 <div class="divide-y">
@@ -873,14 +873,14 @@ function submit() {
                                                 rows="4"
                                                 class="w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
                                                 v-model="item.captionDraft"
-                                                placeholder="Popis alebo poznamka"
+                                                placeholder="Popis alebo poznámka"
                                                 @blur="saveAttachmentCaption(item)"
                                             ></textarea>
                                             <div
                                                 v-if="item.isPending"
                                                 class="text-xs text-muted-foreground"
                                             >
-                                                Bude ulozene po ulozeni dennika.
+                                                Bude uložené po uložení denníka.
                                             </div>
                                         </div>
                                         <div class="flex flex-wrap items-center justify-end gap-2">
@@ -888,8 +888,8 @@ function submit() {
                                                 type="button"
                                                 variant="outline"
                                                 size="icon"
-                                                aria-label="Posunut vyssie"
-                                                title="Posunut vyssie"
+                                                aria-label="Posunúť vyššie"
+                                                title="Posunúť vyššie"
                                                 @click="moveAttachment(item.id, 'up')"
                                             >
                                                 <ChevronUp class="h-4 w-4" />
@@ -898,8 +898,8 @@ function submit() {
                                                 type="button"
                                                 variant="outline"
                                                 size="icon"
-                                                aria-label="Posunut nizsie"
-                                                title="Posunut nizsie"
+                                                aria-label="Posunúť nižšie"
+                                                title="Posunúť nižšie"
                                                 @click="moveAttachment(item.id, 'down')"
                                             >
                                                 <ChevronDown class="h-4 w-4" />
@@ -909,8 +909,8 @@ function submit() {
                                                 type="button"
                                                 variant="outline"
                                                 size="icon"
-                                                aria-label="Zmazat"
-                                                title="Zmazat"
+                                                aria-label="Zmazať"
+                                                title="Zmazať"
                                                 @click="requestDeleteAttachment(item.id, true)"
                                             >
                                                 <Trash2 class="h-4 w-4" />
@@ -920,20 +920,20 @@ function submit() {
                                                 type="button"
                                                 variant="outline"
                                                 size="sm"
-                                                aria-label="Stiahnut"
-                                                title="Stiahnut"
+                                                aria-label="Stiahnuť"
+                                                title="Stiahnuť"
                                                 @click="downloadAttachment(item.download_url)"
                                             >
                                                 <Download class="h-4 w-4" />
-                                                Stiahnut
+                                                Stiahnuť
                                             </Button>
                                             <Button
                                                 v-if="!item.isPending"
                                                 type="button"
                                                 variant="outline"
                                                 size="icon"
-                                                aria-label="Zmazat"
-                                                title="Zmazat"
+                                                aria-label="Zmazať"
+                                                title="Zmazať"
                                                 @click="requestDeleteAttachment(item.id, false)"
                                             >
                                                 <Trash2 class="h-4 w-4" />
@@ -952,10 +952,10 @@ function submit() {
 
                 <div class="flex flex-wrap gap-2">
                     <Button type="submit" :disabled="form.processing">
-                        {{ isEdit ? 'Ulozit zmeny' : 'Ulozit dennik' }}
+                        {{ isEdit ? 'Uložiť zmeny' : 'Uložiť denník' }}
                     </Button>
                     <Button variant="outline" as-child>
-                        <Link href="/denniky">Zrusit</Link>
+                        <Link href="/denniky">Zrušiť</Link>
                     </Button>
                 </div>
             </form>
@@ -965,19 +965,19 @@ function submit() {
     <Dialog :open="showDeleteModal" @update:open="showDeleteModal = $event">
         <DialogContent class="sm:max-w-lg">
             <DialogHeader>
-                <DialogTitle>Vymazat prilohu?</DialogTitle>
+                <DialogTitle>Vymazať prílohu?</DialogTitle>
             </DialogHeader>
             <p class="text-sm text-muted-foreground">
-                Naozaj chcete vymazat tuto prilohu? Tato akcia je nevratna.
+                Naozaj chcete vymazať túto prílohu? Táto akcia je nevratná.
             </p>
             <DialogFooter class="gap-2">
                 <DialogClose as-child>
                     <Button type="button" variant="outline" @click="closeDeleteModal">
-                        Zrusit
+                        Zrušiť
                     </Button>
                 </DialogClose>
                 <Button type="button" variant="destructive" @click="confirmDeleteAttachment">
-                    Vymazat
+                    Vymazať
                 </Button>
             </DialogFooter>
         </DialogContent>

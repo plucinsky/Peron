@@ -6,12 +6,12 @@
             @endif
         </div>
         <div class="header-title">
-            <h1>SLOVENSKA SPELEOLOGICKA SPOLOCNOST</h1>
-            <h2>Jaskyniarska skupina Spisska Bela</h2>
+            <h1>SLOVENSKÁ SPELEOLOGICKÁ SPOLOČNOSŤ</h1>
+            <h2>Jaskyniarska skupina Spišská Belá</h2>
         </div>
     </div>
 
-    <div class="title">TECHNICKY DENNIK c.: {{ $diary->report_number ?? '' }}</div>
+    <div class="title">TECHNICKÝ DENNÍK č.: {{ $diary->report_number ?? '' }}</div>
 
     <table>
         <tr>
@@ -23,29 +23,29 @@
             <td colspan="3"><span class="value">{{ $diary->locality_position }}</span></td>
         </tr>
         <tr>
-            <td class="label">Krasove uzemie:</td>
+            <td class="label">Krasové územie:</td>
             <td><span class="value">{{ $diary->karst_area }}</span></td>
-            <td class="label">Orograficky celok:</td>
+            <td class="label">Orografický celok:</td>
             <td><span class="value">{{ $diary->orographic_unit }}</span></td>
         </tr>
         <tr>
-            <td class="label">Datum:</td>
+            <td class="label">Dátum:</td>
             <td><span class="value">{{ $formatDate($diary->action_date) }}</span></td>
-            <td class="label">Pracovna doba:</td>
+            <td class="label">Pracovná doba:</td>
             <td><span class="value">{{ $diary->work_time }}</span></td>
         </tr>
         <tr>
-            <td class="label">Pocasie pocas akcie:</td>
+            <td class="label">Počasie počas akcie:</td>
             <td colspan="3"><span class="value">{{ $diary->weather }}</span></td>
         </tr>
         <tr>
-            <td class="label">Veduci akcie:</td>
+            <td class="label">Vedúci akcie:</td>
             <td>
                 @if ($leader)
                     <span class="value">{{ $leader->first_name }} {{ $leader->last_name }}</span>
                 @endif
             </td>
-            <td class="label">Ostatni clenovia SSS:</td>
+            <td class="label">Ostatní členovia SSS:</td>
             <td>
                 @foreach ($members as $member)
                     <span class="value">- {{ $member->first_name }} {{ $member->last_name }}</span>@if (! $loop->last)<br>@endif
@@ -53,7 +53,7 @@
             </td>
         </tr>
         <tr>
-            <td class="label">Ini ucastnici:</td>
+            <td class="label">Iní účastníci:</td>
             <td colspan="3">
                 @foreach ($other_members as $member)
                     <span class="value">- {{ $member->first_name }} {{ $member->last_name }}</span>@if (! $loop->last)<br>@endif
@@ -66,38 +66,38 @@
     </table>
 
     <div class="work-desc">
-        <div class="work-desc-title">Popis pracovnej cinnosti:</div>
+        <div class="work-desc-title">Popis pracovnej činnosti:</div>
         {!! $diary->work_description !!}
     </div>
 
     <table style="margin-top: 8px;">
         <tr>
-            <td><span class="value">Pocet priloh: {{ $attachmentsCount }}</span></td>
+            <td><span class="value">Počet príloh: {{ $attachmentsCount }}</span></td>
         </tr>
     </table>
 
     <table class="footer-table">
         <tr>
-            <td colspan="2">Vyhlbene (hlbka) [m]: <span class="value">{{ $diary->excavated_length_m }}</span></td>
+            <td colspan="2">Vyhĺbené (hĺbka) [m]: <span class="value">{{ $diary->excavated_length_m }}</span></td>
         </tr>
         <tr>
-            <td colspan="2">Objavene (dlzka) [m]: <span class="value">{{ $diary->discovered_length_m }}</span></td>
+            <td colspan="2">Objavené (dĺžka) [m]: <span class="value">{{ $diary->discovered_length_m }}</span></td>
         </tr>
         <tr>
-            <td colspan="2">Zamerane (dlzka, hlbka) [m]: <span class="value">{{ $diary->surveyed_length_m }}</span> / <span class="value">{{ $diary->surveyed_depth_m }}</span></td>
+            <td colspan="2">Zamerané (dĺžka, hĺbka) [m]: <span class="value">{{ $diary->surveyed_length_m }}</span> / <span class="value">{{ $diary->surveyed_depth_m }}</span></td>
         </tr>
     </table>
 
     <table class="footer-table">
         <tr>
             <td>
-                Datum a podpis veduceho akcie:
+                Dátum a podpis vedúceho akcie:
                 @if ($diary->leader_signed_at)
                     <span class="value">{{ $formatDate($diary->leader_signed_at) }}</span>
                 @endif
             </td>
             <td>
-                Datum a podpis veduceho klubu:
+                Dátum a podpis vedúceho klubu:
                 @if ($diary->club_signed_at)
                     <span class="value">{{ $formatDate($diary->club_signed_at) }}</span>
                 @endif

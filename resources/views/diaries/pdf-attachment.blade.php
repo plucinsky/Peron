@@ -6,7 +6,7 @@
             @endif
         </div>
         <div class="attachment-title-box">
-            <h1>PRILOHA c. {{ $index + 1 }}/{{ $attachmentsCount }} K TECHNICKEMU DENNIKU</h1>
+            <h1>PRÍLOHA č. {{ $index + 1 }}/{{ $attachmentsCount }} K TECHNICKÉMU DENNÍKU</h1>
         </div>
     </div>
 
@@ -20,13 +20,13 @@
             <td colspan="3"><span class="value">{{ $diary->locality_position }}</span></td>
         </tr>
         <tr>
-            <td class="label">Krasove uzemie:</td>
+            <td class="label">Krasové územie:</td>
             <td><span class="value">{{ $diary->karst_area }}</span></td>
-            <td class="label">Orograficky celok:</td>
+            <td class="label">Orografický celok:</td>
             <td><span class="value">{{ $diary->orographic_unit }}</span></td>
         </tr>
         <tr>
-            <td class="label">Datum:</td>
+            <td class="label">Dátum:</td>
             <td><span class="value">{{ $formatDate($diary->action_date) }}</span></td>
             <td class="label">Foto:</td>
             <td>
