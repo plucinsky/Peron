@@ -55,8 +55,9 @@ class ArchiveDocumentsController extends Controller
         $bucket = (int) floor($document->id / 50);
         $path = "documents/{$bucket}/{$document->id}.{$extension}";
 
-        Storage::putFileAs("documents/{$bucket}", $file, "{$document->id}.{$extension}");
+        Storage::makeDirectory("documents/{$bucket}");
         @chmod(Storage::path("documents/{$bucket}"), 0777);
+        Storage::putFileAs("documents/{$bucket}", $file, "{$document->id}.{$extension}");
         @chmod(Storage::path($path), 0777);
 
         $document->update(['storage_path' => $path]);

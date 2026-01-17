@@ -37,7 +37,7 @@ class ProcessArchiveDocumentPreview implements ShouldQueue
 
         $tmpDir = storage_path('app/tmp/preview-'.$document->id.'-'.Str::uuid());
         if (!is_dir($tmpDir)) {
-            mkdir($tmpDir, 0775, true);
+            mkdir($tmpDir, 0777, true);
         }
 
         $sourcePath = Storage::path($document->storage_path);
@@ -140,6 +140,7 @@ class ProcessArchiveDocumentPreview implements ShouldQueue
         sort($files);
 
         $count = 0;
+        Storage::makeDirectory("previews/{$documentId}");
         @chmod(Storage::path("previews/{$documentId}"), 0777);
         foreach ($files as $filePath) {
             $basename = basename($filePath);
