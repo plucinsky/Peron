@@ -130,7 +130,14 @@ class ProcessArchiveDocumentPreview implements ShouldQueue
     private function convertPdfToImages(string $pdfPath, string $tmpDir): int
     {
         $outputPrefix = $tmpDir.'/page';
-        $process = new Process(['pdftoppm', '-png', $pdfPath, $outputPrefix]);
+        $process = new Process([
+            'pdftoppm',
+            '-png',
+            '-scale-to',
+            '2000',
+            $pdfPath,
+            $outputPrefix,
+        ]);
         $process->setTimeout(120);
         $process->run();
 

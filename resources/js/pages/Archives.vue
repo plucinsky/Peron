@@ -905,7 +905,23 @@ onUnmounted(() => {
     <Dialog :open="showPreviewModal" @update:open="closePreviewModal">
         <DialogContent class="sm:max-w-6xl max-h-[85vh] overflow-hidden">
             <DialogHeader>
-                <DialogTitle>Detail dokumentu</DialogTitle>
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <DialogTitle>Detail dokumentu</DialogTitle>
+                    <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        :disabled="
+                            !previewDocument ||
+                            previewDocument.preview_status === 'queued' ||
+                            previewDocument.preview_status === 'processing'
+                        "
+                        @click="previewDocument && regeneratePreview(previewDocument.id)"
+                    >
+                        <RefreshCw class="mr-2 h-4 w-4" />
+                        Pregenerovať náhľad
+                    </Button>
+                </div>
             </DialogHeader>
 
             <div class="flex max-h-[70vh] flex-col gap-4">
@@ -947,20 +963,8 @@ onUnmounted(() => {
                         v-show="previewTab === 'preview'"
                         class="flex min-h-0 flex-col rounded-md border bg-background p-3 h-[70vh] overflow-hidden"
                     >
-                        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                        <div class="mb-3 flex items-center justify-between">
                             <div class="text-sm font-medium">Náhľad</div>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                :disabled="
-                                    previewDocument.preview_status === 'queued' ||
-                                    previewDocument.preview_status === 'processing'
-                                "
-                                @click="regeneratePreview(previewDocument.id)"
-                            >
-                                <RefreshCw class="mr-2 h-4 w-4" />
-                                Pregenerovať náhľad
-                            </Button>
                         </div>
                         <div
                             v-if="previewDocument.preview_status !== 'done'"
@@ -970,6 +974,7 @@ onUnmounted(() => {
                             <span>Náhľad sa generuje. Skús to o chvíľu znova.</span>
                         </div>
                         <div v-else class="min-h-0 flex-1 overflow-auto">
+                            <div class="flex min-w-full justify-center">
                             <div
                                 class="origin-top-left inline-block"
                                 :style="{
@@ -979,8 +984,9 @@ onUnmounted(() => {
                                 <img
                                     :src="previewImageUrl"
                                     alt="Náhľad dokumentu"
-                                    class="max-w-none rounded-md border"
+                                    class="w-full max-w-[1000px] rounded-md border"
                                 />
+                            </div>
                             </div>
                         </div>
                         <div
