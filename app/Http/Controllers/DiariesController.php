@@ -207,6 +207,11 @@ class DiariesController extends Controller
                 : '',
         ])->render();
 
+        $chromeUserDataDir = storage_path('app/chrome-user-data');
+        if (! is_dir($chromeUserDataDir)) {
+            mkdir($chromeUserDataDir, 0775, true);
+        }
+
         $pdf = Browsershot::html($html)
             ->setChromePath(env('BROWSERSHOT_CHROME_PATH', '/snap/bin/chromium'))
             ->setNodeBinary(env('BROWSERSHOT_NODE_BINARY', '/usr/bin/node'))
@@ -215,6 +220,13 @@ class DiariesController extends Controller
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
+                '--disable-crash-reporter',
+                '--disable-crashpad',
+                '--no-first-run',
+                '--no-default-browser-check',
+                '--user-data-dir='.$chromeUserDataDir,
+                '--data-path='.$chromeUserDataDir,
+                '--disk-cache-dir='.$chromeUserDataDir.'/cache',
             ])
             ->format('A4')
             ->showBackground()
