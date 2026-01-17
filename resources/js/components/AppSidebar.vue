@@ -34,7 +34,7 @@ const mainNavItems: NavItem[] = [
     },
     {
         title: 'Denniky',
-        href: '/technicke-spravy',
+        href: '/denniky',
         icon: FileText,
     },
     {

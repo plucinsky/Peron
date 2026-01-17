@@ -3,6 +3,7 @@
 use App\Http\Controllers\ArchiveDocumentsController;
 use App\Http\Controllers\ArchivesController;
 use App\Http\Controllers\CavesController;
+use App\Http\Controllers\DiariesController;
 use App\Http\Controllers\PersonsController;
 use App\Http\Controllers\UsersController;
 use Illuminate\Support\Facades\Route;
@@ -53,6 +54,22 @@ Route::put('caves/{cave}', [CavesController::class, 'update'])
     ->middleware(['auth', 'verified'])
     ->name('caves.update');
 
+Route::get('denniky', [DiariesController::class, 'index'])
+    ->middleware(['auth', 'verified'])
+    ->name('diaries.index');
+Route::get('denniky/create', [DiariesController::class, 'create'])
+    ->middleware(['auth', 'verified'])
+    ->name('diaries.create');
+Route::post('denniky', [DiariesController::class, 'store'])
+    ->middleware(['auth', 'verified'])
+    ->name('diaries.store');
+Route::get('denniky/{diary}/edit', [DiariesController::class, 'edit'])
+    ->middleware(['auth', 'verified'])
+    ->name('diaries.edit');
+Route::put('denniky/{diary}', [DiariesController::class, 'update'])
+    ->middleware(['auth', 'verified'])
+    ->name('diaries.update');
+
 Route::get('archives', [ArchivesController::class, 'index'])
     ->middleware(['auth', 'verified'])
     ->name('archives.index');
@@ -81,9 +98,5 @@ Route::post('archive-documents/{archiveDocument}/preview', [ArchiveDocumentsCont
 Route::get('archive-documents/{archiveDocument}/preview/{page}', [ArchiveDocumentsController::class, 'previewPage'])
     ->middleware(['auth', 'verified'])
     ->name('archive-documents.preview-page');
-
-Route::get('technicke-spravy', function () {
-    return Inertia::render('TechnicalReports');
-})->middleware(['auth', 'verified'])->name('technical-reports');
 
 require __DIR__.'/settings.php';
