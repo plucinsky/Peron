@@ -12,6 +12,8 @@ class Person extends Model
     /** @use HasFactory<\Database\Factories\PersonFactory> */
     use HasFactory, SoftDeletes, Userstamps;
 
+    protected $table = 'persons';
+
     /**
      * The attributes that are mass assignable.
      *
@@ -25,4 +27,5 @@ class Person extends Model
         'phone',
         'country',
     ];
+
 }
