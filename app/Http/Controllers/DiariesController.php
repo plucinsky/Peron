@@ -12,7 +12,8 @@ use Illuminate\Http\Response as HttpResponse;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
-use Spatie\Browsershot\Browsershot;
+use Mpdf\HTMLParserMode;
+use Mpdf\Mpdf;
 
 class DiariesController extends Controller
 {
@@ -160,10 +161,7 @@ class DiariesController extends Controller
             ->keyBy('id');
 
         $logoPath = public_path('assets/images/logo.png');
-        $logoDataUri = null;
-        if (is_file($logoPath)) {
-            $logoDataUri = 'data:image/png;base64,'.base64_encode(file_get_contents($logoPath));
-        }
+        $logoFilePath = is_file($logoPath) ? 'file://'.$logoPath : null;
 
         $attachments = ArchiveDocument::query()
             ->where('diary_id', $diary->id)
@@ -175,22 +173,16 @@ class DiariesController extends Controller
                 $path = $document->storage_path
                     ? Storage::path($document->storage_path)
                     : null;
-                $dataUri = null;
-
-                if ($path && is_file($path)) {
-                    $mime = $document->mime_type ?: 'image/jpeg';
-                    $contents = base64_encode(file_get_contents($path));
-                    $dataUri = "data:{$mime};base64,{$contents}";
-                }
+                $filePath = $path && is_file($path) ? 'file://'.$path : null;
 
                 return [
                     'caption' => $document->caption,
                     'seq' => $document->seq,
-                    'data_uri' => $dataUri,
+                    'file_path' => $filePath,
                 ];
             });
 
-        $html = view('diaries.pdf', [
+        $viewData = [
             'diary' => $diary,
             'leader' => $persons->get($diary->leader_person_id),
             'members' => collect($diary->member_person_ids ?? [])
@@ -201,37 +193,42 @@ class DiariesController extends Controller
                 ->filter(),
             'attachments' => $attachments,
             'attachmentsCount' => $attachments->count(),
-            'logoDataUri' => $logoDataUri,
+            'logoFilePath' => $logoFilePath,
             'formatDate' => fn ($date) => $date
                 ? Carbon::parse($date)->format('d.m.Y')
                 : '',
-        ])->render();
+        ];
 
-        $chromeUserDataDir = storage_path('app/chrome-user-data');
-        if (! is_dir($chromeUserDataDir)) {
-            mkdir($chromeUserDataDir, 0775, true);
+        $mpdfTempDir = storage_path('app/mpdf');
+        if (! is_dir($mpdfTempDir)) {
+            mkdir($mpdfTempDir, 0775, true);
         }
 
-        $pdf = Browsershot::html($html)
-            ->setChromePath(env('BROWSERSHOT_CHROME_PATH', '/snap/bin/chromium'))
-            ->setNodeBinary(env('BROWSERSHOT_NODE_BINARY', '/usr/bin/node'))
-            ->setNpmBinary(env('BROWSERSHOT_NPM_BINARY', '/usr/bin/npm'))
-            ->addChromiumArguments([
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-crash-reporter',
-                '--disable-crashpad',
-                '--no-first-run',
-                '--no-default-browser-check',
-                '--user-data-dir='.$chromeUserDataDir,
-                '--data-path='.$chromeUserDataDir,
-                '--disk-cache-dir='.$chromeUserDataDir.'/cache',
-            ])
-            ->format('A4')
-            ->showBackground()
-            ->margins(10, 10, 10, 10)
-            ->pdf();
+        $mpdf = new Mpdf([
+            'format' => 'A4',
+            'margin_top' => 10,
+            'margin_right' => 10,
+            'margin_bottom' => 10,
+            'margin_left' => 10,
+            'tempDir' => $mpdfTempDir,
+            'allow_local_files' => true,
+        ]);
+
+        $mpdf->WriteHTML(view('diaries.pdf-styles')->render(), HTMLParserMode::HEADER_CSS);
+        $mpdf->WriteHTML(view('diaries.pdf-main', $viewData)->render(), HTMLParserMode::HTML_BODY);
+
+        foreach ($attachments as $index => $attachment) {
+            $mpdf->AddPage();
+            $mpdf->WriteHTML(
+                view('diaries.pdf-attachment', array_merge($viewData, [
+                    'attachment' => $attachment,
+                    'index' => $index,
+                ]))->render(),
+                HTMLParserMode::HTML_BODY
+            );
+        }
+
+        $pdf = $mpdf->Output('', 'S');
 
         $filename = sprintf('dennik-%s.pdf', $diary->id);
 
