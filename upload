@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+npm run build
+
+git add public/build .gitignore update upload
+
+if [ -z "$(git status --porcelain)" ]; then
+  echo "No changes to commit."
+  exit 0
+fi
+
+git commit -m "Update build"
+git push
