@@ -3,7 +3,6 @@ import { Link } from '@inertiajs/vue3';
 import {
     Archive,
     FileText,
-    LayoutGrid,
     Mountain,
     Search,
     UserRound,
@@ -22,16 +21,15 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { dashboard } from '@/routes';
 import { type NavItem } from '@/types';
 
 import AppLogo from './AppLogo.vue';
 
 const mainNavItems: NavItem[] = [
     {
-        title: 'Dashboard',
-        href: dashboard(),
-        icon: LayoutGrid,
+        title: 'Mudrlant',
+        href: '/search',
+        icon: Search,
     },
     {
         title: 'Denniky',
@@ -42,11 +40,6 @@ const mainNavItems: NavItem[] = [
         title: 'Archiv',
         href: '/archives',
         icon: Archive,
-    },
-    {
-        title: 'Vyhľadávanie',
-        href: '/search',
-        icon: Search,
     },
     {
         title: 'Jaskyne',
@@ -74,7 +67,7 @@ const footerNavItems: NavItem[] = [];
             <SidebarMenu>
                 <SidebarMenuItem>
                     <SidebarMenuButton size="lg" as-child>
-                        <Link :href="dashboard()">
+                        <Link href="/search">
                             <AppLogo />
                         </Link>
                     </SidebarMenuButton>

@@ -48,13 +48,43 @@ class SearchController extends Controller
 
         $vector = $this->vectorLiteral($embedding);
         $rows = DB::select(
-            'SELECT e.archive_document_id, e.chunk, e.chunk_index, d.name, d.original_filename, d.extension, (e.embedding <-> ?::vector) as distance
+            'SELECT e.archive_document_id, e.chunk, e.chunk_index, d.name, d.original_filename, d.extension, d.preview_page_count, d.preview_status, (e.embedding <-> ?::vector) as distance
              FROM archive_document_embeddings e
              JOIN archive_documents d ON d.id = e.archive_document_id
              ORDER BY e.embedding <-> ?::vector
              LIMIT 12',
             [$vector, $vector]
         );
+
+        $maxDistance = (float) env('RAG_MAX_DISTANCE', 1.0);
+        $rows = array_values(array_filter(
+            $rows,
+            fn ($row) => (float) $row->distance <= $maxDistance
+        ));
+
+        logger()->info('RAG search results.', [
+            'query' => $query,
+            'row_count' => count($rows),
+        ]);
+        if (count($rows) > 0) {
+            $distances = array_map(
+                fn ($row) => (float) $row->distance,
+                $rows
+            );
+            logger()->info('RAG distances.', [
+                'query' => $query,
+                'min' => min($distances),
+                'max' => max($distances),
+                'top' => array_map(
+                    fn ($row) => [
+                        'doc' => $row->name,
+                        'distance' => (float) $row->distance,
+                        'excerpt' => $this->trimExcerpt((string) $row->chunk),
+                    ],
+                    array_slice($rows, 0, 3)
+                ),
+            ]);
+        }
 
         $sources = [];
         $contextChunks = [];
@@ -67,6 +97,8 @@ class SearchController extends Controller
                     'original_filename' => $row->original_filename,
                     'extension' => $row->extension,
                     'distance' => (float) $row->distance,
+                    'preview_page_count' => $row->preview_page_count,
+                    'preview_status' => $row->preview_status,
                     'excerpts' => [],
                 ];
             }
@@ -83,6 +115,12 @@ class SearchController extends Controller
 
         $sources = array_values($sources);
         $context = implode("\n\n", $contextChunks);
+
+        logger()->info('RAG context built.', [
+            'query' => $query,
+            'context_chars' => strlen($context),
+            'context_chunks' => count($contextChunks),
+        ]);
 
         $answer = $this->generateAnswer($query, $context);
 
@@ -126,7 +164,7 @@ class SearchController extends Controller
                         'content' => [
                             [
                                 'type' => 'input_text',
-                                'text' => 'Odpovedz stručne a vecne na základe poskytnutého kontextu. Ak kontext nestačí, povedz to.',
+                                'text' => 'Si speleologický asistent pre vyhľadávanie informácií v archívnych dokumentoch. Odpovedz vecne a podrobne na základe poskytnutého kontextu. Rozviň odpoveď tak, aby bola užitočná pre ľudí, ktorí cielene vyhľadávajú informácie v archívnych dokumentoch. Ak kontext nestačí, jasne to uveď a môžeš pridať všeobecné známe informácie, ale musíš ich výslovne označiť ako všeobecné (mimo archívnych dokumentov). Nezačínaj odpoveď frázou "Na základe poskytnutého kontextu"; ak potrebuješ úvod, použi "Na základe informácií z archivovaných dokumentov".',
                             ],
                         ],
                     ],
@@ -143,10 +181,15 @@ class SearchController extends Controller
             ]);
 
         if (!$response->successful()) {
+            logger()->warning('OpenAI responses request failed.', [
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
             return null;
         }
 
-        return $response->json('output_text') ?: null;
+        $text = $this->extractResponseText($response->json());
+        return $text !== '' ? $text : null;
     }
 
     /**
@@ -165,5 +208,28 @@ class SearchController extends Controller
         }
 
         return mb_substr($text, 0, 220).'...';
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function extractResponseText(array $payload): string
+    {
+        if (!empty($payload['output_text'])) {
+            return (string) $payload['output_text'];
+        }
+
+        $output = $payload['output'] ?? [];
+        $chunks = [];
+        foreach ($output as $item) {
+            $contents = $item['content'] ?? [];
+            foreach ($contents as $content) {
+                if (($content['type'] ?? '') === 'output_text') {
+                    $chunks[] = $content['text'] ?? '';
+                }
+            }
+        }
+
+        return trim(implode("\n", array_filter($chunks)));
     }
 }

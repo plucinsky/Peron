@@ -6,7 +6,6 @@ import {
     BookOpen,
     FileText,
     Folder,
-    LayoutGrid,
     Mountain,
     Menu,
     Search,
@@ -70,9 +69,9 @@ function activeItemStyles(url: NonNullable<InertiaLinkProps['href']>) {
 
 const mainNavItems: NavItem[] = [
     {
-        title: 'Dashboard',
-        href: dashboard(),
-        icon: LayoutGrid,
+        title: 'Mudrlant',
+        href: '/search',
+        icon: Search,
     },
     {
         title: 'Denniky',
