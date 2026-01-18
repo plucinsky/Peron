@@ -64,3 +64,23 @@ Artisan::command('archives:reset-stuck {--minutes=10} {--limit=200}', function (
 
     $this->info("Resetnutych {$reset} document(s).");
 })->purpose('Reset stuck archive document processing');
+
+Artisan::command('archives:restart-incomplete {--limit=200}', function () {
+    $limit = (int) $this->option('limit');
+    $processed = 0;
+
+    ArchiveDocument::query()
+        ->where(function ($query) {
+            $query->whereNull('processing_status')
+                ->orWhere('processing_status', '!=', 'complete');
+        })
+        ->orderBy('id')
+        ->limit($limit)
+        ->get()
+        ->each(function (ArchiveDocument $document) use (&$processed) {
+            $document->restartProcessingFull();
+            $processed += 1;
+        });
+
+    $this->info("Restartnute {$processed} document(s) na plne spracovanie.");
+})->purpose('Restart full processing for incomplete archive documents');
