@@ -28,7 +28,13 @@ class ArchivesController extends Controller
                     'size',
                     'storage_path',
                     'original_filename',
+                    'created_at',
+                    'processing_status',
+                    'processing_step',
+                    'processing_log',
                     'ocr_status',
+                    'analyze_text_status',
+                    'rag_status',
                     'preview_status',
                     'preview_page_count',
                     'preview_extension',
@@ -36,7 +42,16 @@ class ArchivesController extends Controller
                     'processed_diary_data'
                 )
                 ->orderBy('name')
-                ->get(),
+                ->get()
+                ->each
+                ->append([
+                    'processing_status_label',
+                    'processing_step_label',
+                    'preview_status_label',
+                    'ocr_status_label',
+                    'analyze_text_status_label',
+                    'rag_status_label',
+                ]),
         ]);
     }
 

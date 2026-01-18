@@ -110,6 +110,9 @@ Route::post('archive-documents/{archiveDocument}/generate-diary', [ArchiveDocume
 Route::post('archive-documents/{archiveDocument}/process-diary', [ArchiveDocumentsController::class, 'processDiary'])
     ->middleware(['auth', 'verified'])
     ->name('archive-documents.process-diary');
+Route::post('archive-documents/{archiveDocument}/process', [ArchiveDocumentsController::class, 'startProcessing'])
+    ->middleware(['auth', 'verified'])
+    ->name('archive-documents.process');
 Route::post('archive-documents/{archiveDocument}/preview', [ArchiveDocumentsController::class, 'startPreview'])
     ->middleware(['auth', 'verified'])
     ->name('archive-documents.preview');

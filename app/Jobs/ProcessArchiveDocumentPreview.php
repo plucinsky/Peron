@@ -34,13 +34,20 @@ class ProcessArchiveDocumentPreview implements ShouldQueue
             return;
         }
 
-        if ($document->preview_status === 'processing') {
+        if (in_array($document->preview_status, ['processing', 'done'], true)) {
             Log::info('Preview job skipped: already processing.', [
                 'archive_document_id' => $document->id,
                 'preview_status' => $document->preview_status,
             ]);
             return;
         }
+
+        $document->update([
+            'processing_status' => 'queued',
+            'processing_step' => 'generatePreview',
+            'preview_status' => 'queued',
+        ]);
+        $document->appendProcessingLog('generatePreview', 'info', 'Nahled bol prevzaty do fronty.');
 
         Log::info('Preview job started.', [
             'archive_document_id' => $document->id,
@@ -49,9 +56,12 @@ class ProcessArchiveDocumentPreview implements ShouldQueue
         ]);
 
         $document->update([
+            'processing_status' => 'processing',
+            'processing_step' => 'generatePreview',
             'preview_status' => 'processing',
             'preview_error' => null,
         ]);
+        $document->appendProcessingLog('generatePreview', 'info', 'Zacina spracovanie nahladu.');
 
         $tmpDir = storage_path('app/tmp/preview-'.$document->id.'-'.Str::uuid());
         if (!is_dir($tmpDir)) {
@@ -93,11 +103,13 @@ class ProcessArchiveDocumentPreview implements ShouldQueue
             $storedCount = $this->storePreviewImages($tmpDir, $document->id);
 
             $document->update([
+                'processing_status' => 'done',
                 'preview_status' => 'done',
                 'preview_page_count' => $storedCount,
                 'preview_extension' => $previewExtension,
-                'preview_generated_at' => now(),
             ]);
+            $document->appendProcessingLog('generatePreview', 'info', 'Nahled bol uspesne dokoncen');
+            $document->processing();
 
             Log::info('Preview job finished.', [
                 'archive_document_id' => $document->id,
@@ -106,9 +118,11 @@ class ProcessArchiveDocumentPreview implements ShouldQueue
             ]);
         } catch (Throwable $exception) {
             $document->update([
+                'processing_status' => 'failed',
                 'preview_status' => 'failed',
                 'preview_error' => $exception->getMessage(),
             ]);
+            $document->appendProcessingLog('generatePreview', 'error', $exception->getMessage());
 
             Log::error('Preview job failed.', [
                 'archive_document_id' => $document->id,
@@ -122,9 +136,15 @@ class ProcessArchiveDocumentPreview implements ShouldQueue
     public function failed(Throwable $exception): void
     {
         ArchiveDocument::whereKey($this->archiveDocumentId)->update([
+            'processing_status' => 'failed',
+            'processing_step' => 'generatePreview',
             'preview_status' => 'failed',
             'preview_error' => $exception->getMessage(),
         ]);
+        $document = ArchiveDocument::find($this->archiveDocumentId);
+        if ($document) {
+            $document->appendProcessingLog('generatePreview', 'error', $exception->getMessage());
+        }
     }
 
     private function convertPdfToImages(string $pdfPath, string $tmpDir): int

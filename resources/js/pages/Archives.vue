@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3';
 import {
+    Check,
+    Clock,
     Download,
     Eye,
     Loader2,
@@ -8,6 +10,7 @@ import {
     Plus,
     RefreshCw,
     Upload,
+    X,
 } from 'lucide-vue-next';
 import { computed, onUnmounted, ref, watch, watchEffect } from 'vue';
 
@@ -41,7 +44,24 @@ interface DocumentRow {
     size: number | null;
     storage_path: string | null;
     original_filename: string | null;
+    created_at: string;
+    processing_status: string | null;
+    processing_step: string | null;
+    processing_status_label: string;
+    processing_step_label: string;
+    processing_log: Array<{
+        time: string;
+        step: string;
+        type: 'info' | 'warning' | 'error';
+        message: string;
+    }> | null;
     ocr_status: string | null;
+    analyze_text_status: string | null;
+    rag_status: string | null;
+    preview_status_label: string;
+    ocr_status_label: string;
+    analyze_text_status_label: string;
+    rag_status_label: string;
     ocr_text: string | null;
     processed_diary_data: Record<string, unknown> | null;
     preview_status: string | null;
@@ -121,6 +141,58 @@ function formatBytes(size: number | null) {
     const rounded = value >= 10 ? Math.round(value) : Math.round(value * 10) / 10;
     const formatted = String(rounded).replace('.', ',');
     return `${formatted} ${units[unitIndex]}`;
+}
+
+type StatusIcon = {
+    icon: typeof Loader2;
+    className: string;
+    spin?: boolean;
+};
+
+function statusIcon(status: string | null): StatusIcon {
+    switch (status) {
+        case 'processing':
+            return { icon: Loader2, className: 'text-blue-600', spin: true };
+        case 'queued':
+        case 'pending':
+            return { icon: Clock, className: 'text-amber-600' };
+        case 'done':
+            return { icon: Check, className: 'text-emerald-600' };
+        case 'failed':
+            return { icon: X, className: 'text-rose-600' };
+        default:
+            return { icon: Minus, className: 'text-muted-foreground' };
+    }
+}
+
+function formatLogTime(value: string) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+
+    const pad = (input: number) => String(input).padStart(2, '0');
+    const day = pad(date.getDate());
+    const month = pad(date.getMonth() + 1);
+    const year = date.getFullYear();
+    const hours = pad(date.getHours());
+    const minutes = pad(date.getMinutes());
+    const seconds = pad(date.getSeconds());
+    return `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`;
+}
+
+function formatDateTime(value: string) {
+    return formatLogTime(value);
+}
+
+function logTypeClass(type: 'info' | 'warning' | 'error') {
+    if (type === 'error') {
+        return 'bg-rose-100 text-rose-700';
+    }
+    if (type === 'warning') {
+        return 'bg-amber-100 text-amber-800';
+    }
+    return 'bg-emerald-100 text-emerald-700';
 }
 
 const showArchiveModal = ref(false);
@@ -346,14 +418,34 @@ function triggerUploadPicker() {
     uploadInputRef.value?.click();
 }
 
-function startOcr(documentId: number) {
+function startProcessing(documentId: number) {
     router.post(
-        `/archive-documents/${documentId}/ocr`,
+        `/archive-documents/${documentId}/process`,
         {},
         {
             preserveScroll: true,
             onSuccess: () => {
                 router.reload({ only: ['documents'], preserveScroll: true });
+            },
+        }
+    );
+}
+
+function startProcessingMode(mode: 'missing' | 'full') {
+    if (!previewDocument.value) {
+        return;
+    }
+
+    router.post(
+        `/archive-documents/${previewDocument.value.id}/process`,
+        { mode },
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                router.reload({ only: ['documents'], preserveScroll: true });
+            },
+            onFinish: () => {
+                showProcessingDialog.value = false;
             },
         }
     );
@@ -367,39 +459,14 @@ function generateDiary(documentId: number) {
     );
 }
 
-function processDiary(documentId: number) {
-    processingDiaryIds.value.add(documentId);
-    router.post(
-        `/archive-documents/${documentId}/process-diary`,
-        {},
-        {
-            preserveScroll: true,
-            onSuccess: () => {
-                router.reload({ only: ['documents'], preserveScroll: true });
-            },
-            onFinish: () => {
-                const next = new Set(processingDiaryIds.value);
-                next.delete(documentId);
-                processingDiaryIds.value = next;
-            },
-        }
-    );
-}
-
-function regeneratePreview(documentId: number) {
-    router.post(
-        `/archive-documents/${documentId}/preview/regenerate`,
-        {},
-        { preserveScroll: true }
-    );
-}
-
 const showPreviewModal = ref(false);
 const previewDocument = ref<DocumentRow | null>(null);
+const editDocumentName = ref('');
+const isSavingDocument = ref(false);
+const showProcessingDialog = ref(false);
 const previewPage = ref(1);
 const zoomScale = ref(1);
-const previewTab = ref<'preview' | 'ocr' | 'processed'>('preview');
-const processingDiaryIds = ref<Set<number>>(new Set());
+const previewTab = ref<'preview' | 'ocr' | 'processed' | 'log'>('preview');
 const zoomStep = 0.1;
 const zoomMin = 0.2;
 const zoomMax = 2.5;
@@ -418,14 +485,7 @@ function openPreview(document: DocumentRow) {
     zoomScale.value = 1;
     previewTab.value = 'preview';
     showPreviewModal.value = true;
-
-    if (document.preview_status !== 'done') {
-        router.post(
-            `/archive-documents/${document.id}/preview`,
-            {},
-            { preserveScroll: true }
-        );
-    }
+    editDocumentName.value = document.name;
 }
 
 function closePreviewModal() {
@@ -434,7 +494,41 @@ function closePreviewModal() {
     previewPage.value = 1;
     zoomScale.value = 1;
     previewTab.value = 'preview';
+    editDocumentName.value = '';
+    isSavingDocument.value = false;
     stopPreviewPolling();
+}
+
+function saveDocumentName() {
+    if (!previewDocument.value || isSavingDocument.value) {
+        return;
+    }
+
+    isSavingDocument.value = true;
+    router.put(
+        `/archive-documents/${previewDocument.value.id}`,
+        {
+            archive_id: previewDocument.value.archive_id,
+            name: editDocumentName.value,
+            type: previewDocument.value.type,
+        },
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                router.reload({ only: ['documents'], preserveScroll: true });
+            },
+            onFinish: () => {
+                isSavingDocument.value = false;
+            },
+        }
+    );
+}
+
+function openProcessingDialog() {
+    if (!previewDocument.value) {
+        return;
+    }
+    showProcessingDialog.value = true;
 }
 
 function goToPrevPage() {
@@ -465,6 +559,26 @@ function stopPreviewPolling() {
     }
 }
 
+function startPreviewPolling() {
+    if (previewPoller) {
+        return;
+    }
+    previewPoller = setInterval(() => {
+        router.reload({ only: ['documents'], preserveScroll: true });
+    }, 3000);
+}
+
+function shouldPollDocument(document: DocumentRow) {
+    const activeStates = ['pending', 'queued', 'processing'];
+    return (
+        activeStates.includes(document.processing_status ?? '') ||
+        activeStates.includes(document.preview_status ?? '') ||
+        activeStates.includes(document.ocr_status ?? '') ||
+        activeStates.includes(document.analyze_text_status ?? '') ||
+        activeStates.includes(document.rag_status ?? '')
+    );
+}
+
 watch(
     () => showPreviewModal.value,
     (isOpen) => {
@@ -473,20 +587,11 @@ watch(
             return;
         }
 
-        if (
-            !previewDocument.value ||
-            (previewDocument.value.preview_status === 'done' &&
-                previewDocument.value.ocr_status !== 'processing' &&
-                previewDocument.value.ocr_status !== 'queued')
-        ) {
+        if (previewDocument.value && shouldPollDocument(previewDocument.value)) {
+            startPreviewPolling();
+        } else {
             stopPreviewPolling();
-            return;
         }
-
-        stopPreviewPolling();
-        previewPoller = setInterval(() => {
-            router.reload({ only: ['documents'], preserveScroll: true });
-        }, 3000);
     }
 );
 
@@ -502,9 +607,12 @@ watchEffect(() => {
         previewDocument.value = updated;
     }
 
-    if (previewDocument.value.preview_status === 'done') {
+    if (!showPreviewModal.value || !shouldPollDocument(previewDocument.value)) {
         stopPreviewPolling();
+        return;
     }
+
+    startPreviewPolling();
 });
 
 onUnmounted(() => {
@@ -604,6 +712,15 @@ onUnmounted(() => {
                                     OCR
                                 </th>
                                 <th class="px-4 py-2 text-left font-medium">
+                                    Analyze
+                                </th>
+                                <th class="px-4 py-2 text-left font-medium">
+                                    RAG
+                                </th>
+                                <th class="px-4 py-2 text-left font-medium">
+                                    Spracovanie
+                                </th>
+                                <th class="px-4 py-2 text-left font-medium">
                                     Akcie
                                 </th>
                             </tr>
@@ -622,42 +739,70 @@ onUnmounted(() => {
                                     {{ formatBytes(document.size) }}
                                 </td>
                                 <td class="px-4 py-2 text-sm text-muted-foreground">
-                                    <span class="inline-flex items-center gap-2">
-                                        <span
-                                            v-if="document.preview_status === 'processing'"
-                                            class="inline-flex h-3 w-3 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-muted-foreground"
-                                        ></span>
-                                        {{
-                                            document.preview_status === 'done'
-                                                ? 'Hotovo'
-                                                : document.preview_status === 'processing'
-                                                  ? 'Generuje sa'
-                                                  : document.preview_status === 'queued'
-                                                    ? 'V rade'
-                                                    : document.preview_status === 'failed'
-                                                      ? 'Chyba'
-                                                      : 'Nezadané'
-                                        }}
-                                    </span>
+                                    <component
+                                        :is="statusIcon(document.preview_status).icon"
+                                        class="h-4 w-4"
+                                        :class="[
+                                            statusIcon(document.preview_status).className,
+                                            statusIcon(document.preview_status).spin
+                                                ? 'animate-spin'
+                                                : '',
+                                        ]"
+                                        :title="document.preview_status_label"
+                                        :aria-label="document.preview_status_label"
+                                    />
                                 </td>
                                 <td class="px-4 py-2 text-sm text-muted-foreground">
-                                    <span class="inline-flex items-center gap-2">
-                                        <span
-                                            v-if="document.ocr_status === 'processing'"
-                                            class="inline-flex h-3 w-3 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-muted-foreground"
-                                        ></span>
-                                        {{
-                                            document.ocr_status === 'done'
-                                                ? 'Hotovo'
-                                                : document.ocr_status === 'processing'
-                                                  ? 'Spracúva sa'
-                                                  : document.ocr_status === 'queued'
-                                                    ? 'V rade'
-                                                    : document.ocr_status === 'failed'
-                                                      ? 'Chyba'
-                                                      : 'Nezadané'
-                                        }}
-                                    </span>
+                                    <component
+                                        :is="statusIcon(document.ocr_status).icon"
+                                        class="h-4 w-4"
+                                        :class="[
+                                            statusIcon(document.ocr_status).className,
+                                            statusIcon(document.ocr_status).spin
+                                                ? 'animate-spin'
+                                                : '',
+                                        ]"
+                                        :title="document.ocr_status_label"
+                                        :aria-label="document.ocr_status_label"
+                                    />
+                                </td>
+                                <td class="px-4 py-2 text-sm text-muted-foreground">
+                                    <component
+                                        :is="statusIcon(document.analyze_text_status).icon"
+                                        class="h-4 w-4"
+                                        :class="[
+                                            statusIcon(document.analyze_text_status).className,
+                                            statusIcon(document.analyze_text_status).spin
+                                                ? 'animate-spin'
+                                                : '',
+                                        ]"
+                                        :title="document.analyze_text_status_label"
+                                        :aria-label="document.analyze_text_status_label"
+                                    />
+                                </td>
+                                <td class="px-4 py-2 text-sm text-muted-foreground">
+                                    <component
+                                        :is="statusIcon(document.rag_status).icon"
+                                        class="h-4 w-4"
+                                        :class="[
+                                            statusIcon(document.rag_status).className,
+                                            statusIcon(document.rag_status).spin
+                                                ? 'animate-spin'
+                                                : '',
+                                        ]"
+                                        :title="document.rag_status_label"
+                                        :aria-label="document.rag_status_label"
+                                    />
+                                </td>
+                                <td class="px-4 py-2 text-sm text-muted-foreground">
+                                    <div class="flex flex-col gap-0.5">
+                                        <span class="font-medium text-foreground">
+                                            {{ document.processing_status_label }}
+                                        </span>
+                                        <span class="text-xs text-muted-foreground">
+                                            {{ document.processing_step_label }}
+                                        </span>
+                                    </div>
                                 </td>
                                 <td class="px-4 py-2">
                                     <button
@@ -682,7 +827,7 @@ onUnmounted(() => {
                             <tr v-if="filteredDocuments.length === 0">
                                 <td
                                     class="px-4 py-6 text-center text-muted-foreground"
-                                    colspan="6"
+                                    colspan="9"
                                 >
                                     Žiadne dokumenty.
                                 </td>
@@ -913,13 +1058,14 @@ onUnmounted(() => {
                         variant="outline"
                         :disabled="
                             !previewDocument ||
-                            previewDocument.preview_status === 'queued' ||
-                            previewDocument.preview_status === 'processing'
+                            previewDocument.processing_status === 'pending' ||
+                            previewDocument.processing_status === 'queued' ||
+                            previewDocument.processing_status === 'processing'
                         "
-                        @click="previewDocument && regeneratePreview(previewDocument.id)"
+                        @click="previewDocument && startProcessing(previewDocument.id)"
                     >
                         <RefreshCw class="mr-2 h-4 w-4" />
-                        Pregenerovať náhľad
+                        Spracovať
                     </Button>
                 </div>
             </DialogHeader>
@@ -932,206 +1078,400 @@ onUnmounted(() => {
                     Vyber dokument.
                 </div>
                 <div v-else class="flex min-h-0 flex-1 flex-col gap-4">
-                    <div class="flex flex-wrap items-center gap-2">
-                        <Button
-                            type="button"
-                            size="sm"
-                            :variant="previewTab === 'preview' ? 'default' : 'outline'"
-                            @click="previewTab = 'preview'"
-                        >
-                            Náhľad
-                        </Button>
-                        <Button
-                            type="button"
-                            size="sm"
-                            :variant="previewTab === 'ocr' ? 'default' : 'outline'"
-                            @click="previewTab = 'ocr'"
-                        >
-                            OCR prepis
-                        </Button>
-                        <Button
-                            type="button"
-                            size="sm"
-                            :variant="previewTab === 'processed' ? 'default' : 'outline'"
-                            @click="previewTab = 'processed'"
-                        >
-                            Spracované údaje
-                        </Button>
-                    </div>
-
-                    <div
-                        v-show="previewTab === 'preview'"
-                        class="flex min-h-0 flex-col rounded-md border bg-background p-3 h-[70vh] overflow-hidden"
-                    >
-                        <div class="mb-3 flex items-center justify-between">
-                            <div class="text-sm font-medium">Náhľad</div>
-                        </div>
-                        <div
-                            v-if="previewDocument.preview_status !== 'done'"
-                            class="flex items-center gap-3 text-sm text-muted-foreground"
-                        >
-                            <span class="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-muted-foreground"></span>
-                            <span>Náhľad sa generuje. Skús to o chvíľu znova.</span>
-                        </div>
-                        <div v-else class="min-h-0 flex-1 overflow-auto">
-                            <div class="flex min-w-full justify-center">
-                            <div
-                                class="origin-top-left inline-block"
-                                :style="{
-                                    transform: `scale(${zoomScale})`,
-                                }"
-                            >
-                                <img
-                                    :src="previewImageUrl"
-                                    alt="Náhľad dokumentu"
-                                    class="w-full max-w-[1000px] rounded-md border"
-                                />
-                            </div>
-                            </div>
-                        </div>
-                        <div
-                            v-if="previewDocument && previewDocument.preview_status === 'done'"
-                            class="mt-3 flex flex-wrap items-center justify-between gap-2"
-                        >
-                            <div class="flex items-center gap-2">
-                                <Button
-                                    variant="outline"
-                                    size="icon"
-                                    :disabled="zoomScale <= zoomMin"
-                                    @click="zoomOut"
-                                    aria-label="Oddialiť"
-                                    title="Oddialiť"
-                                >
-                                    <Minus class="h-4 w-4" />
-                                </Button>
-                                <div class="min-w-[56px] text-center text-xs font-medium text-muted-foreground">
-                                    {{ Math.round(zoomScale * 100) }}%
+                    <div class="flex min-h-0 flex-col rounded-md border bg-background p-3 h-[70vh] overflow-hidden">
+                        <div class="flex h-full flex-col gap-4 lg:flex-row">
+                            <div class="flex min-h-0 flex-1 flex-col">
+                                <div class="mb-3 flex items-center justify-between">
+                                    <div class="text-sm font-medium">
+                                        {{
+                                            previewTab === 'preview'
+                                                ? 'Náhľad'
+                                                : previewTab === 'ocr'
+                                                  ? 'OCR prepis'
+                                                  : previewTab === 'processed'
+                                                    ? 'Spracované údaje'
+                                                    : 'Log spracovania'
+                                        }}
+                                    </div>
+                                    <Button
+                                        v-if="previewTab !== 'preview'"
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        @click="previewTab = 'preview'"
+                                    >
+                                        Späť na náhľad
+                                    </Button>
                                 </div>
-                                <Button
-                                    variant="outline"
-                                    size="icon"
-                                    :disabled="zoomScale >= zoomMax"
-                                    @click="zoomIn"
-                                    aria-label="Priblížiť"
-                                    title="Priblížiť"
+                                <div
+                                    v-show="previewTab === 'preview'"
+                                    class="flex min-h-0 flex-1 flex-col"
                                 >
-                                    <Plus class="h-4 w-4" />
-                                </Button>
-                            </div>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                :disabled="previewPage <= 1"
-                                @click="goToPrevPage"
-                            >
-                                Predchádzajúca
-                            </Button>
-                            <div class="text-sm text-muted-foreground">
-                                Strana {{ previewPage }} /
-                                {{ previewDocument.preview_page_count ?? 1 }}
-                            </div>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                :disabled="
-                                    previewPage >=
-                                    (previewDocument.preview_page_count ?? 1)
-                                "
-                                @click="goToNextPage"
-                            >
-                                Nasledujúca
-                            </Button>
-                        </div>
-                    </div>
+                                    <div
+                                        v-if="previewDocument.preview_status !== 'done'"
+                                        class="flex items-center gap-3 text-sm text-muted-foreground"
+                                    >
+                                        <span class="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-muted-foreground"></span>
+                                        <span>Náhľad sa generuje. Skús to o chvíľu znova.</span>
+                                    </div>
+                                    <div v-else class="min-h-0 flex-1 overflow-auto">
+                                        <div class="flex min-w-full justify-center">
+                                            <div
+                                                class="origin-top-left inline-block"
+                                                :style="{
+                                                    transform: `scale(${zoomScale})`,
+                                                }"
+                                            >
+                                                <img
+                                                    :src="previewImageUrl"
+                                                    alt="Náhľad dokumentu"
+                                                    class="w-full max-w-[1000px] rounded-md border"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div
+                                        v-if="previewDocument && previewDocument.preview_status === 'done'"
+                                        class="mt-3 flex flex-wrap items-center justify-between gap-2"
+                                    >
+                                        <div class="flex items-center gap-2">
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                :disabled="zoomScale <= zoomMin"
+                                                @click="zoomOut"
+                                                aria-label="Oddialiť"
+                                                title="Oddialiť"
+                                            >
+                                                <Minus class="h-4 w-4" />
+                                            </Button>
+                                            <div class="min-w-[56px] text-center text-xs font-medium text-muted-foreground">
+                                                {{ Math.round(zoomScale * 100) }}%
+                                            </div>
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                :disabled="zoomScale >= zoomMax"
+                                                @click="zoomIn"
+                                                aria-label="Priblížiť"
+                                                title="Priblížiť"
+                                            >
+                                                <Plus class="h-4 w-4" />
+                                            </Button>
+                                        </div>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            :disabled="previewPage <= 1"
+                                            @click="goToPrevPage"
+                                        >
+                                            Predchádzajúca
+                                        </Button>
+                                        <div class="text-sm text-muted-foreground">
+                                            Strana {{ previewPage }} /
+                                            {{ previewDocument.preview_page_count ?? 1 }}
+                                        </div>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            :disabled="
+                                                previewPage >=
+                                                (previewDocument.preview_page_count ?? 1)
+                                            "
+                                            @click="goToNextPage"
+                                        >
+                                            Nasledujúca
+                                        </Button>
+                                    </div>
+                                </div>
 
-                    <div
-                        v-show="previewTab === 'ocr'"
-                        class="flex min-h-0 flex-col rounded-md border bg-background p-3 h-[70vh] overflow-hidden"
-                    >
-                        <div class="flex flex-wrap items-center justify-between gap-2">
-                            <div class="text-sm font-medium">OCR prepis</div>
-                            <Button
-                                type="button"
-                                size="sm"
-                                @click="startOcr(previewDocument.id)"
-                            >
-                                Vygenerovať OCR
-                            </Button>
-                        </div>
-                        <div class="text-xs text-muted-foreground">
-                            {{
-                                previewDocument.ocr_status === 'done'
-                                    ? 'Hotovo'
-                                    : previewDocument.ocr_status === 'processing'
-                                      ? 'Spracúva sa'
-                                      : previewDocument.ocr_status === 'queued'
-                                        ? 'V rade'
-                                        : previewDocument.ocr_status === 'failed'
-                                          ? 'Chyba'
-                                          : 'Nezadané'
-                            }}
-                        </div>
-                        <div class="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs">
-                            {{
-                                previewDocument.ocr_text ||
-                                'OCR prepis zatiaľ nie je dostupný.'
-                            }}
-                        </div>
-                    </div>
+                                <div
+                                    v-show="previewTab === 'ocr'"
+                                    class="flex min-h-0 flex-1 flex-col rounded-md border bg-background p-3 overflow-hidden"
+                                >
+                                    <div class="text-xs text-muted-foreground">
+                                        {{ previewDocument.ocr_status_label }}
+                                    </div>
+                                    <div class="min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs">
+                                        {{
+                                            previewDocument.ocr_text ||
+                                            'OCR prepis zatiaľ nie je dostupný.'
+                                        }}
+                                    </div>
+                                </div>
 
-                    <div
-                        v-show="previewTab === 'processed'"
-                        class="flex min-h-0 flex-col rounded-md border bg-background p-3 h-[70vh] overflow-hidden"
-                    >
-                        <div class="flex flex-wrap items-center justify-between gap-2">
-                            <div class="text-sm font-medium">Spracované údaje</div>
-                            <div class="flex flex-wrap gap-2">
-                                <Button
-                                    type="button"
-                                    size="sm"
-                                    @click="processDiary(previewDocument.id)"
-                                    :disabled="
-                                        !previewDocument.ocr_text ||
-                                        processingDiaryIds.has(previewDocument.id)
-                                    "
+                                <div
+                                    v-show="previewTab === 'processed'"
+                                    class="flex min-h-0 flex-1 flex-col rounded-md border bg-background p-3 overflow-hidden"
                                 >
-                                    <Loader2
-                                        v-if="processingDiaryIds.has(previewDocument.id)"
-                                        class="h-4 w-4 animate-spin"
-                                    />
-                                    <span v-else>Spracovať</span>
-                                </Button>
-                                <Button
-                                    type="button"
-                                    size="sm"
-                                    variant="outline"
-                                    @click="generateDiary(previewDocument.id)"
-                                    :disabled="!previewDocument.ocr_text"
-                                >
-                                    Vygenerovať denník
-                                </Button>
-                            </div>
-                        </div>
-                        <div class="min-h-0 flex-1 overflow-auto rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs">
-                            <pre class="whitespace-pre-wrap">
+                                    <div class="flex flex-wrap items-center justify-between gap-2">
+                                        <div class="text-sm text-muted-foreground">
+                                            Analýza textu
+                                        </div>
+                                        <div class="flex flex-wrap gap-2">
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="outline"
+                                                @click="generateDiary(previewDocument.id)"
+                                                :disabled="!previewDocument.ocr_text"
+                                            >
+                                                Vygenerovať denník
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    <div class="min-h-0 flex-1 overflow-auto rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs">
+                                        <pre class="whitespace-pre-wrap">
 {{ previewDocument.processed_diary_data ? JSON.stringify(previewDocument.processed_diary_data, null, 2) : 'Spracované údaje zatiaľ nie sú dostupné.' }}
-                            </pre>
+                                        </pre>
+                                    </div>
+                                </div>
+
+                                <div
+                                    v-show="previewTab === 'log'"
+                                    class="flex min-h-0 flex-1 flex-col rounded-md border bg-background p-3 overflow-hidden"
+                                >
+                                    <div
+                                        v-if="!previewDocument.processing_log || previewDocument.processing_log.length === 0"
+                                        class="text-sm text-muted-foreground"
+                                    >
+                                        Žiadny log zatiaľ nie je dostupný.
+                                    </div>
+                                    <div v-else class="min-h-0 flex-1 overflow-auto">
+                                        <table class="w-full text-sm">
+                                            <thead class="sticky top-0 bg-muted text-left">
+                                                <tr>
+                                                    <th class="px-3 py-2 font-medium">Čas</th>
+                                                    <th class="px-3 py-2 font-medium">Krok</th>
+                                                    <th class="px-3 py-2 font-medium">Typ</th>
+                                                    <th class="px-3 py-2 font-medium">Správa</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr
+                                                    v-for="(entry, index) in [...previewDocument.processing_log].reverse()"
+                                                    :key="index"
+                                                    class="border-t"
+                                                >
+                                                    <td class="px-3 py-2 text-xs text-muted-foreground">
+                                                        {{ formatLogTime(entry.time) }}
+                                                    </td>
+                                                    <td class="px-3 py-2 text-xs text-muted-foreground">
+                                                        {{ entry.step }}
+                                                    </td>
+                                                    <td class="px-3 py-2 text-xs">
+                                                        <span
+                                                            class="rounded px-2 py-0.5 text-xs font-medium uppercase tracking-wide"
+                                                            :class="logTypeClass(entry.type)"
+                                                        >
+                                                            {{ entry.type }}
+                                                        </span>
+                                                    </td>
+                                                    <td class="px-3 py-2 text-sm text-foreground">
+                                                        {{ entry.message }}
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="lg:w-[320px] lg:shrink-0 lg:sticky lg:top-4 lg:self-start">
+                                <div class="space-y-4">
+                                    <div>
+                                        <div class="text-xs font-semibold uppercase text-muted-foreground">
+                                            Názov dokumentu
+                                        </div>
+                                        <div class="mt-2 flex items-center gap-2">
+                                            <Input
+                                                v-model="editDocumentName"
+                                                class="h-9"
+                                            />
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                :disabled="isSavingDocument"
+                                                @click="saveDocumentName"
+                                            >
+                                                Uložiť
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    <div class="grid gap-2 text-sm">
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-muted-foreground">Typ</span>
+                                            <span class="font-medium text-foreground">
+                                                {{ previewDocument.type }}
+                                            </span>
+                                        </div>
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-muted-foreground">Veľkosť</span>
+                                            <span class="font-medium text-foreground">
+                                                {{ formatBytes(previewDocument.size) }}
+                                            </span>
+                                        </div>
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-muted-foreground">Nahrané</span>
+                                            <span class="font-medium text-foreground">
+                                                {{ formatDateTime(previewDocument.created_at) }}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div class="space-y-2">
+                                        <div class="text-xs font-semibold uppercase text-muted-foreground">
+                                            Spracovanie
+                                        </div>
+                                        <div class="flex items-center justify-between text-sm">
+                                            <span class="text-muted-foreground">Stav</span>
+                                            <span class="text-foreground">
+                                                {{ previewDocument.processing_status_label }}
+                                            </span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            class="flex w-full items-center justify-between text-sm transition hover:text-foreground"
+                                            @click="previewTab = 'preview'"
+                                        >
+                                            <span class="text-muted-foreground underline underline-offset-2 decoration-dotted">
+                                                Preview
+                                            </span>
+                                            <component
+                                                :is="statusIcon(previewDocument.preview_status).icon"
+                                                class="h-4 w-4"
+                                                :class="[
+                                                    statusIcon(previewDocument.preview_status).className,
+                                                    statusIcon(previewDocument.preview_status).spin
+                                                        ? 'animate-spin'
+                                                        : '',
+                                                ]"
+                                                :title="previewDocument.preview_status_label"
+                                                :aria-label="previewDocument.preview_status_label"
+                                            />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="flex w-full items-center justify-between text-sm transition hover:text-foreground"
+                                            @click="previewTab = 'ocr'"
+                                        >
+                                            <span class="text-muted-foreground underline underline-offset-2 decoration-dotted">
+                                                OCR
+                                            </span>
+                                            <component
+                                                :is="statusIcon(previewDocument.ocr_status).icon"
+                                                class="h-4 w-4"
+                                                :class="[
+                                                    statusIcon(previewDocument.ocr_status).className,
+                                                    statusIcon(previewDocument.ocr_status).spin
+                                                        ? 'animate-spin'
+                                                        : '',
+                                                ]"
+                                                :title="previewDocument.ocr_status_label"
+                                                :aria-label="previewDocument.ocr_status_label"
+                                            />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="flex w-full items-center justify-between text-sm transition hover:text-foreground"
+                                            @click="previewTab = 'processed'"
+                                        >
+                                            <span class="text-muted-foreground underline underline-offset-2 decoration-dotted">
+                                                Analyze
+                                            </span>
+                                            <component
+                                                :is="statusIcon(previewDocument.analyze_text_status).icon"
+                                                class="h-4 w-4"
+                                                :class="[
+                                                    statusIcon(previewDocument.analyze_text_status).className,
+                                                    statusIcon(previewDocument.analyze_text_status).spin
+                                                        ? 'animate-spin'
+                                                        : '',
+                                                ]"
+                                                :title="previewDocument.analyze_text_status_label"
+                                                :aria-label="previewDocument.analyze_text_status_label"
+                                            />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="flex w-full items-center justify-between text-sm transition hover:text-foreground"
+                                            @click="previewTab = 'processed'"
+                                        >
+                                            <span class="text-muted-foreground underline underline-offset-2 decoration-dotted">
+                                                RAG
+                                            </span>
+                                            <component
+                                                :is="statusIcon(previewDocument.rag_status).icon"
+                                                class="h-4 w-4"
+                                                :class="[
+                                                    statusIcon(previewDocument.rag_status).className,
+                                                    statusIcon(previewDocument.rag_status).spin
+                                                        ? 'animate-spin'
+                                                        : '',
+                                                ]"
+                                                :title="previewDocument.rag_status_label"
+                                                :aria-label="previewDocument.rag_status_label"
+                                            />
+                                        </button>
+                                    </div>
+
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        class="w-full"
+                                        @click="previewTab = 'log'"
+                                    >
+                                        Log spracovania
+                                    </Button>
+
+                                    <div class="grid gap-2">
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            class="w-full"
+                                            @click="openProcessingDialog"
+                                        >
+                                            Spusti spracovanie
+                                        </Button>
+                                        <a
+                                            :href="`/archive-documents/${previewDocument.id}/download`"
+                                            class="inline-flex items-center justify-center rounded-md border border-input bg-background px-3 py-2 text-sm font-medium transition hover:bg-accent hover:text-accent-foreground"
+                                        >
+                                            Stiahnuť dokument
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
+
                 </div>
 
-                <DialogFooter class="gap-2">
-                    <DialogClose as-child>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            @click="closePreviewModal"
-                        >
-                            Zavrieť
-                        </Button>
-                    </DialogClose>
-                </DialogFooter>
             </div>
+        </DialogContent>
+    </Dialog>
+
+    <Dialog :open="showProcessingDialog" @update:open="showProcessingDialog = false">
+        <DialogContent class="sm:max-w-md">
+            <DialogHeader>
+                <DialogTitle>Spustiť spracovanie</DialogTitle>
+            </DialogHeader>
+            <div class="text-sm text-muted-foreground">
+                Chceš spracovať len chýbajúce časti, alebo celé spracovanie od začiatku?
+            </div>
+            <DialogFooter class="gap-2">
+                <Button type="button" variant="outline" @click="showProcessingDialog = false">
+                    Zrušiť
+                </Button>
+                <Button type="button" variant="outline" @click="startProcessingMode('missing')">
+                    Len chýbajúce
+                </Button>
+                <Button type="button" @click="startProcessingMode('full')">
+                    Celé spracovanie
+                </Button>
+            </DialogFooter>
         </DialogContent>
     </Dialog>
 

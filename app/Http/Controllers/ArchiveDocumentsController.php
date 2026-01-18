@@ -8,7 +8,6 @@ use App\Jobs\ProcessArchiveDocumentPreview;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -51,7 +50,6 @@ class ArchiveDocumentsController extends Controller
             'storage_path' => '',
             'original_filename' => $originalName,
             'checksum' => $checksum,
-            'ocr_status' => 'pending',
         ]);
 
         $bucket = (int) floor($document->id / 50);
@@ -125,10 +123,16 @@ class ArchiveDocumentsController extends Controller
             return to_route('archives.index');
         }
 
+        if (in_array($archiveDocument->ocr_status, ['pending', 'queued', 'processing'], true)) {
+            return to_route('archives.index');
+        }
+
         $archiveDocument->update([
-            'ocr_status' => 'queued',
-            'ocr_error' => null,
+            'processing_status' => 'pending',
+            'processing_step' => 'ocr',
+            'ocr_status' => 'pending',
         ]);
+        $archiveDocument->appendProcessingLog('ocr', 'info', 'OCR bol manualne spusteny.');
 
         ProcessArchiveDocumentOcr::dispatch($archiveDocument->id);
 
@@ -139,7 +143,7 @@ class ArchiveDocumentsController extends Controller
     {
         $parsed = $archiveDocument->processed_diary_data;
         if (!$parsed) {
-            $parsed = $this->processDiaryData($archiveDocument);
+            $parsed = $archiveDocument->processDiaryData();
         }
 
         if (!$parsed) {
@@ -153,7 +157,19 @@ class ArchiveDocumentsController extends Controller
 
     public function processDiary(ArchiveDocument $archiveDocument): RedirectResponse
     {
-        $this->processDiaryData($archiveDocument);
+        $archiveDocument->processDiaryData();
+
+        return to_route('archives.index');
+    }
+
+    public function startProcessing(Request $request, ArchiveDocument $archiveDocument): RedirectResponse
+    {
+        $mode = (string) $request->input('mode', 'missing');
+        if ($mode === 'full') {
+            $archiveDocument->restartProcessingFull();
+        } else {
+            $archiveDocument->startProcessingMissing();
+        }
 
         return to_route('archives.index');
     }
@@ -164,14 +180,17 @@ class ArchiveDocumentsController extends Controller
             return to_route('archives.index');
         }
 
-        if (in_array($archiveDocument->preview_status, ['queued', 'processing'], true)) {
+        if (in_array($archiveDocument->preview_status, ['pending', 'queued', 'processing'], true)) {
             return to_route('archives.index');
         }
 
         $archiveDocument->update([
-            'preview_status' => 'queued',
+            'processing_status' => 'pending',
+            'processing_step' => 'generatePreview',
+            'preview_status' => 'pending',
             'preview_error' => null,
         ]);
+        $archiveDocument->appendProcessingLog('generatePreview', 'info', 'Nahled bol manualne spusteny.');
 
         ProcessArchiveDocumentPreview::dispatch($archiveDocument->id);
 
@@ -187,12 +206,14 @@ class ArchiveDocumentsController extends Controller
         Storage::deleteDirectory("previews/{$archiveDocument->id}");
 
         $archiveDocument->update([
-            'preview_status' => 'queued',
+            'processing_status' => 'pending',
+            'processing_step' => 'generatePreview',
+            'preview_status' => 'pending',
             'preview_error' => null,
             'preview_page_count' => null,
             'preview_extension' => null,
-            'preview_generated_at' => null,
         ]);
+        $archiveDocument->appendProcessingLog('generatePreview', 'info', 'Regeneracia nahladu bola manualne spustena.');
 
         ProcessArchiveDocumentPreview::dispatch($archiveDocument->id);
 
@@ -242,47 +263,6 @@ class ArchiveDocumentsController extends Controller
         return 'other';
     }
 
-    private function processDiaryData(ArchiveDocument $archiveDocument): ?array
-    {
-        if (!$archiveDocument->ocr_text) {
-            return null;
-        }
-
-        $response = Http::withToken((string) env('OPENAI_API_KEY'))
-            ->timeout(600)
-            ->post('https://api.openai.com/v1/responses', [
-                'model' => env('OPENAI_MODEL', 'gpt-4o'),
-                'input' => [
-                    [
-                        'role' => 'user',
-                        'content' => [
-                            [
-                                'type' => 'input_text',
-                                'text' => 'Extract data from the OCR text and return ONLY valid JSON. Use this exact structure and map each label to the field below:\n\n- "TECHNICKÝ DENNÍK č." -> report_number\n- "Lokalita" -> locality_name\n- "Poloha lokality" -> locality_position\n- "Krasové územie" -> karst_area\n- "Orografický celok" -> orographic_unit\n- "Dátum" -> action_date (format dd.mm.yyyy)\n- "Pracovná doba" -> work_time\n- "Počasie počas akcie" -> weather\n- "Vedúci akcie" -> leader_name\n- "Ostatní členovia SSS" -> sss_participants (array of names, without leader)\n- "Iní účastníci" (or "PL"/"SK" lists) -> other_participants (array of names)\n- "Popis pracovnej činnosti" -> work_description\n- "Vyhĺbené (hĺbka) [m]" -> excavated_length_m\n- "Objavené (dĺžka) [m]" -> discovered_length_m\n- "Zamerané (dĺžka, hĺbka) [m]" -> surveyed_length_m and surveyed_depth_m (split values if present)\n\nReturn JSON with keys: report_number, locality_name, locality_position, karst_area, orographic_unit, action_date, work_time, weather, leader_name, work_description, excavated_length_m, discovered_length_m, surveyed_length_m, surveyed_depth_m, sss_participants, other_participants. If a value is missing, use an empty string for string fields and an empty array for participant arrays. Return only JSON, no extra text.',
-                            ],
-                            [
-                                'type' => 'input_text',
-                                'text' => $archiveDocument->ocr_text,
-                            ],
-                        ],
-                    ],
-                ],
-            ]);
-
-        if (!$response->successful()) {
-            return null;
-        }
-
-        $raw = $this->extractText($response->json());
-        $parsed = $this->parseJson($raw);
-
-        $archiveDocument->update([
-            'processed_diary_data' => $parsed,
-        ]);
-
-        return $parsed;
-    }
-
     private function buildDiaryPrefill(array $parsed): array
     {
         $leader = trim((string) ($parsed['leader_name'] ?? ''));
@@ -326,45 +306,6 @@ class ArchiveDocumentsController extends Controller
         }
 
         return [];
-    }
-
-    private function extractText(array $payload): string
-    {
-        if (!empty($payload['output_text'])) {
-            return (string) $payload['output_text'];
-        }
-
-        $output = $payload['output'] ?? [];
-        $chunks = [];
-        foreach ($output as $item) {
-            $contents = $item['content'] ?? [];
-            foreach ($contents as $content) {
-                if (($content['type'] ?? '') === 'output_text') {
-                    $chunks[] = $content['text'] ?? '';
-                }
-            }
-        }
-
-        return trim(implode("\n", array_filter($chunks)));
-    }
-
-    private function parseJson(string $text): array
-    {
-        $decoded = json_decode($text, true);
-        if (is_array($decoded)) {
-            return $decoded;
-        }
-
-        $start = strpos($text, '{');
-        $end = strrpos($text, '}');
-        if ($start === false || $end === false || $end <= $start) {
-            return [];
-        }
-
-        $slice = substr($text, $start, $end - $start + 1);
-        $decoded = json_decode($slice, true);
-
-        return is_array($decoded) ? $decoded : [];
     }
 
     private function parseDateToIso(string $date): string

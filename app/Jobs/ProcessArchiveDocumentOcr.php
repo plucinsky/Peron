@@ -3,7 +3,6 @@
 namespace App\Jobs;
 
 use App\Models\ArchiveDocument;
-use App\Jobs\ProcessArchiveDocumentPreview;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -38,17 +37,31 @@ class ProcessArchiveDocumentOcr implements ShouldQueue
             return;
         }
 
+        if (in_array($document->ocr_status, ['processing', 'done'], true)) {
+            return;
+        }
+
         $document->update([
-            'ocr_status' => 'processing',
-            'ocr_error' => null,
+            'processing_status' => 'queued',
+            'processing_step' => 'ocr',
+            'ocr_status' => 'queued',
         ]);
+        $document->appendProcessingLog('ocr', 'info', 'OCR bol prevzaty do fronty.');
+
+        $document->update([
+            'processing_status' => 'processing',
+            'processing_step' => 'ocr',
+            'ocr_status' => 'processing',
+        ]);
+        $document->appendProcessingLog('ocr', 'info', 'Zacina spracovanie OCR.');
 
         $images = $this->buildImagePayloads($document);
         if (count($images) === 0) {
             $document->update([
+                'processing_status' => 'failed',
                 'ocr_status' => 'failed',
-                'ocr_error' => 'Nepodarilo sa pripraviť obrázky pre OCR.',
             ]);
+            $document->appendProcessingLog('ocr', 'error', 'Nepodarilo sa pripravit obrazky pre OCR.');
             return;
         }
 
@@ -72,27 +85,35 @@ class ProcessArchiveDocumentOcr implements ShouldQueue
 
         if (!$response->successful()) {
             $document->update([
+                'processing_status' => 'failed',
                 'ocr_status' => 'failed',
-                'ocr_error' => $response->body(),
             ]);
+            $document->appendProcessingLog('ocr', 'error', 'OCR request zlyhal.');
             return;
         }
 
         $text = $this->extractText($response->json());
 
         $document->update([
+            'processing_status' => 'done',
             'ocr_text' => $text,
             'ocr_status' => 'done',
-            'ocr_processed_at' => now(),
         ]);
+        $document->appendProcessingLog('ocr', 'info', 'OCR bolo uspesne dokoncene.');
+        $document->processing();
     }
 
     public function failed(Throwable $exception): void
     {
         ArchiveDocument::whereKey($this->archiveDocumentId)->update([
+            'processing_status' => 'failed',
+            'processing_step' => 'ocr',
             'ocr_status' => 'failed',
-            'ocr_error' => $exception->getMessage(),
         ]);
+        $document = ArchiveDocument::find($this->archiveDocumentId);
+        if ($document) {
+            $document->appendProcessingLog('ocr', 'error', $exception->getMessage());
+        }
     }
 
     private function extractText(array $payload): string
@@ -122,11 +143,6 @@ class ProcessArchiveDocumentOcr implements ShouldQueue
 
         if (in_array($extension, $imageExtensions, true)) {
             return [$this->imagePayload($document->storage_path, $document->mime_type)];
-        }
-
-        if ($document->preview_status !== 'done') {
-            (new ProcessArchiveDocumentPreview($document->id))->handle();
-            $document->refresh();
         }
 
         if ($document->preview_status !== 'done' || !$document->preview_page_count) {
