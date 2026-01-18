@@ -5,6 +5,7 @@ import {
     FileText,
     LayoutGrid,
     Mountain,
+    Search,
     UserRound,
     Users,
 } from 'lucide-vue-next';
@@ -41,6 +42,11 @@ const mainNavItems: NavItem[] = [
         title: 'Archiv',
         href: '/archives',
         icon: Archive,
+    },
+    {
+        title: 'Vyhľadávanie',
+        href: '/search',
+        icon: Search,
     },
     {
         title: 'Jaskyne',

@@ -6,6 +6,7 @@ use App\Http\Controllers\CavesController;
 use App\Http\Controllers\DiariesController;
 use App\Http\Controllers\PersonsController;
 use App\Http\Controllers\UsersController;
+use App\Http\Controllers\SearchController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
@@ -122,5 +123,12 @@ Route::post('archive-documents/{archiveDocument}/preview/regenerate', [ArchiveDo
 Route::get('archive-documents/{archiveDocument}/preview/{page}', [ArchiveDocumentsController::class, 'previewPage'])
     ->middleware(['auth', 'verified'])
     ->name('archive-documents.preview-page');
+
+Route::get('search', [SearchController::class, 'index'])
+    ->middleware(['auth', 'verified'])
+    ->name('search.index');
+Route::post('search', [SearchController::class, 'search'])
+    ->middleware(['auth', 'verified'])
+    ->name('search.query');
 
 require __DIR__.'/settings.php';

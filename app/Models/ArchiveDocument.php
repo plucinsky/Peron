@@ -157,6 +157,7 @@ class ArchiveDocument extends Model
             'processed_diary_data' => null,
             'rag_status' => null,
         ]);
+        $this->embeddings()->delete();
 
         $this->appendProcessingLog('manual', 'info', 'Manuálne spustené kompletné spracovanie od začiatku.');
         $this->processing(true);
