@@ -6,6 +6,7 @@ use App\Jobs\ProcessArchiveDocumentAnalyzeText;
 use App\Jobs\ProcessArchiveDocumentOcr;
 use App\Jobs\ProcessArchiveDocumentPreview;
 use App\Jobs\ProcessArchiveDocumentRag;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -241,6 +242,11 @@ class ArchiveDocument extends Model
         ];
 
         $this->forceFill(['processing_log' => $log])->save();
+    }
+
+    public function embeddings(): HasMany
+    {
+        return $this->hasMany(ArchiveDocumentEmbedding::class);
     }
 
     public function getProcessingStatusLabelAttribute(): string
