@@ -59,6 +59,7 @@ class ProcessArchiveDocumentPreview implements ShouldQueue
             'processing_status' => 'processing',
             'processing_step' => 'generatePreview',
             'preview_status' => 'processing',
+            'processing_at' => now(),
             'preview_error' => null,
         ]);
         $document->appendProcessingLog('generatePreview', 'info', 'Zacina spracovanie nahladu.');
@@ -107,6 +108,7 @@ class ProcessArchiveDocumentPreview implements ShouldQueue
                 'preview_status' => 'done',
                 'preview_page_count' => $storedCount,
                 'preview_extension' => $previewExtension,
+                'processing_at' => null,
             ]);
             $document->appendProcessingLog('generatePreview', 'info', 'Nahled bol uspesne dokoncen');
             $document->processing();
@@ -121,6 +123,7 @@ class ProcessArchiveDocumentPreview implements ShouldQueue
                 'processing_status' => 'failed',
                 'preview_status' => 'failed',
                 'preview_error' => $exception->getMessage(),
+                'processing_at' => null,
             ]);
             $document->appendProcessingLog('generatePreview', 'error', $exception->getMessage());
 
@@ -140,6 +143,7 @@ class ProcessArchiveDocumentPreview implements ShouldQueue
             'processing_step' => 'generatePreview',
             'preview_status' => 'failed',
             'preview_error' => $exception->getMessage(),
+            'processing_at' => null,
         ]);
         $document = ArchiveDocument::find($this->archiveDocumentId);
         if ($document) {

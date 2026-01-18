@@ -42,6 +42,7 @@ class ProcessArchiveDocumentRag implements ShouldQueue
             'processing_status' => 'processing',
             'processing_step' => 'rag',
             'rag_status' => 'processing',
+            'processing_at' => now(),
         ]);
         $document->appendProcessingLog('rag', 'info', 'Zacina RAG spracovanie.');
 
@@ -49,6 +50,7 @@ class ProcessArchiveDocumentRag implements ShouldQueue
             $document->update([
                 'processing_status' => 'failed',
                 'rag_status' => 'failed',
+                'processing_at' => null,
             ]);
             $document->appendProcessingLog('rag', 'error', 'Chyba OCR text pre RAG spracovanie.');
             return;
@@ -60,6 +62,7 @@ class ProcessArchiveDocumentRag implements ShouldQueue
             $document->update([
                 'processing_status' => 'failed',
                 'rag_status' => 'failed',
+                'processing_at' => null,
             ]);
             $document->appendProcessingLog('rag', 'error', 'OCR text je prazdny.');
             return;
@@ -81,6 +84,7 @@ class ProcessArchiveDocumentRag implements ShouldQueue
                 $document->update([
                     'processing_status' => 'failed',
                     'rag_status' => 'failed',
+                    'processing_at' => null,
                 ]);
                 $document->appendProcessingLog('rag', 'error', 'Embedding request zlyhal.');
                 return;
@@ -91,6 +95,7 @@ class ProcessArchiveDocumentRag implements ShouldQueue
                 $document->update([
                     'processing_status' => 'failed',
                     'rag_status' => 'failed',
+                    'processing_at' => null,
                 ]);
                 $document->appendProcessingLog('rag', 'error', 'Neplatna odpoved z embeddings.');
                 return;
@@ -131,6 +136,7 @@ class ProcessArchiveDocumentRag implements ShouldQueue
         $document->update([
             'processing_status' => 'done',
             'rag_status' => 'done',
+            'processing_at' => null,
         ]);
         $document->appendProcessingLog('rag', 'info', 'RAG spracovanie bolo uspesne dokoncene.');
         $document->processing();
@@ -142,6 +148,7 @@ class ProcessArchiveDocumentRag implements ShouldQueue
             'processing_status' => 'failed',
             'processing_step' => 'rag',
             'rag_status' => 'failed',
+            'processing_at' => null,
         ]);
         $document = ArchiveDocument::find($this->archiveDocumentId);
         if ($document) {

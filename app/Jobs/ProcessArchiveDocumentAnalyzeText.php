@@ -50,6 +50,7 @@ class ProcessArchiveDocumentAnalyzeText implements ShouldQueue
             'processing_status' => 'processing',
             'processing_step' => 'analyzeText',
             'analyze_text_status' => 'processing',
+            'processing_at' => now(),
         ]);
         $document->appendProcessingLog('analyzeText', 'info', 'Zacina analyza textu.');
 
@@ -57,6 +58,7 @@ class ProcessArchiveDocumentAnalyzeText implements ShouldQueue
             $document->update([
                 'processing_status' => 'failed',
                 'analyze_text_status' => 'failed',
+                'processing_at' => null,
             ]);
             $document->appendProcessingLog('analyzeText', 'error', 'Chyba OCR text pre analyzu.');
             return;
@@ -67,6 +69,7 @@ class ProcessArchiveDocumentAnalyzeText implements ShouldQueue
             $document->update([
                 'processing_status' => 'failed',
                 'analyze_text_status' => 'failed',
+                'processing_at' => null,
             ]);
             $document->appendProcessingLog('analyzeText', 'error', 'Analyza textu zlyhala.');
             return;
@@ -75,6 +78,7 @@ class ProcessArchiveDocumentAnalyzeText implements ShouldQueue
         $document->update([
             'processing_status' => 'done',
             'analyze_text_status' => 'done',
+            'processing_at' => null,
         ]);
         $document->appendProcessingLog('analyzeText', 'info', 'Analyza textu bola uspesne dokoncena.');
         $document->processing();
@@ -86,6 +90,7 @@ class ProcessArchiveDocumentAnalyzeText implements ShouldQueue
             'processing_status' => 'failed',
             'processing_step' => 'analyzeText',
             'analyze_text_status' => 'failed',
+            'processing_at' => null,
         ]);
         $document = ArchiveDocument::find($this->archiveDocumentId);
         if ($document) {

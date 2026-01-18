@@ -63,6 +63,7 @@ class ArchiveDocument extends Model
         'preview_extension',
         'processing_status',
         'processing_step',
+        'processing_at',
         'analyze_text_status',
         'rag_status',
         'processing_log',
@@ -79,6 +80,7 @@ class ArchiveDocument extends Model
             'meta' => 'array',
             'processed_diary_data' => 'array',
             'processing_log' => 'array',
+            'processing_at' => 'datetime',
         ];
     }
 
@@ -132,6 +134,7 @@ class ArchiveDocument extends Model
         $this->update([
             'processing_step' => null,
             'processing_status' => 'complete',
+            'processing_at' => null,
         ]);
         $this->appendProcessingLog('complete', 'info', 'Spracovanie je kompletne.');
     }
@@ -147,6 +150,7 @@ class ArchiveDocument extends Model
         $this->update([
             'processing_status' => null,
             'processing_step' => null,
+            'processing_at' => null,
             'preview_status' => null,
             'preview_error' => null,
             'preview_page_count' => null,

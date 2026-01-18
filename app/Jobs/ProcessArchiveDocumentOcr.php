@@ -52,6 +52,7 @@ class ProcessArchiveDocumentOcr implements ShouldQueue
             'processing_status' => 'processing',
             'processing_step' => 'ocr',
             'ocr_status' => 'processing',
+            'processing_at' => now(),
         ]);
         $document->appendProcessingLog('ocr', 'info', 'Zacina spracovanie OCR.');
 
@@ -60,6 +61,7 @@ class ProcessArchiveDocumentOcr implements ShouldQueue
             $document->update([
                 'processing_status' => 'failed',
                 'ocr_status' => 'failed',
+                'processing_at' => null,
             ]);
             $document->appendProcessingLog('ocr', 'error', 'Nepodarilo sa pripravit obrazky pre OCR.');
             return;
@@ -87,6 +89,7 @@ class ProcessArchiveDocumentOcr implements ShouldQueue
             $document->update([
                 'processing_status' => 'failed',
                 'ocr_status' => 'failed',
+                'processing_at' => null,
             ]);
             $document->appendProcessingLog('ocr', 'error', 'OCR request zlyhal.');
             return;
@@ -98,6 +101,7 @@ class ProcessArchiveDocumentOcr implements ShouldQueue
             'processing_status' => 'done',
             'ocr_text' => $text,
             'ocr_status' => 'done',
+            'processing_at' => null,
         ]);
         $document->appendProcessingLog('ocr', 'info', 'OCR bolo uspesne dokoncene.');
         $document->processing();
@@ -109,6 +113,7 @@ class ProcessArchiveDocumentOcr implements ShouldQueue
             'processing_status' => 'failed',
             'processing_step' => 'ocr',
             'ocr_status' => 'failed',
+            'processing_at' => null,
         ]);
         $document = ArchiveDocument::find($this->archiveDocumentId);
         if ($document) {
