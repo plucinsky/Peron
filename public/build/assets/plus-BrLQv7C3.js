@@ -1,1 +1,0 @@
-import{c as s}from"./createLucideIcon-t2s_5CcC.js";const c=s("MinusIcon",[["path",{d:"M5 12h14",key:"1ays0h"}]]);const e=s("PlusIcon",[["path",{d:"M5 12h14",key:"1ays0h"}],["path",{d:"M12 5v14",key:"s699le"}]]);export{c as M,e as P};
