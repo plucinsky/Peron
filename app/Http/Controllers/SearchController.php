@@ -91,6 +91,7 @@ class SearchController extends Controller
         $expandedChunks = [];
         $expandedByDoc = [];
         $sourceExcerptKeys = [];
+        $contextKeys = [];
 
         foreach ($rows as $row) {
             $docId = (int) $row->archive_document_id;
@@ -147,20 +148,41 @@ class SearchController extends Controller
             }
         }
 
-        foreach ($expandedChunks as $chunk) {
-            $docId = (int) $chunk->archive_document_id;
-            $excerpt = $this->trimExcerpt((string) $chunk->chunk);
-            if (
-                $excerpt !== ''
-                && isset($sources[$docId])
-                && !isset($sourceExcerptKeys[$docId][$excerpt])
-            ) {
-                $sources[$docId]['excerpts'][] = $excerpt;
-                $sourceExcerptKeys[$docId][$excerpt] = true;
+        foreach ($rows as $row) {
+            if (count($contextChunks) >= 8) {
+                break;
             }
-            if (count($contextChunks) < 8) {
+
+            $docId = (int) $row->archive_document_id;
+            $index = (int) $row->chunk_index;
+            for ($i = $index - 2; $i <= $index + 2; $i++) {
+                if ($i < 0 || count($contextChunks) >= 8) {
+                    continue;
+                }
+
+                $key = $docId.':'.$i;
+                if (isset($contextKeys[$key])) {
+                    continue;
+                }
+
+                $chunk = $expandedChunks[$key] ?? null;
+                if (!$chunk) {
+                    continue;
+                }
+
+                $excerpt = $this->trimExcerpt((string) $chunk->chunk);
+                if (
+                    $excerpt !== ''
+                    && isset($sources[$docId])
+                    && !isset($sourceExcerptKeys[$docId][$excerpt])
+                ) {
+                    $sources[$docId]['excerpts'][] = $excerpt;
+                    $sourceExcerptKeys[$docId][$excerpt] = true;
+                }
+
                 $name = $sources[$docId]['name'] ?? (string) $docId;
                 $contextChunks[] = "Dokument: {$name}\nText: ".trim((string) $chunk->chunk);
+                $contextKeys[$key] = true;
             }
         }
 
