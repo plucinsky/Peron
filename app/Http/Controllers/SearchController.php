@@ -90,6 +90,7 @@ class SearchController extends Controller
         $contextChunks = [];
         $expandedChunks = [];
         $expandedByDoc = [];
+        $sourceExcerptKeys = [];
 
         foreach ($rows as $row) {
             $docId = (int) $row->archive_document_id;
@@ -136,23 +137,30 @@ class SearchController extends Controller
                     'preview_status' => $row->preview_status,
                     'excerpts' => [],
                 ];
+                $sourceExcerptKeys[$docId] = [];
             }
 
             $excerpt = $this->trimExcerpt((string) $row->chunk);
-            if ($excerpt !== '') {
+            if ($excerpt !== '' && !isset($sourceExcerptKeys[$docId][$excerpt])) {
                 $sources[$docId]['excerpts'][] = $excerpt;
+                $sourceExcerptKeys[$docId][$excerpt] = true;
             }
         }
 
         foreach ($expandedChunks as $chunk) {
             $docId = (int) $chunk->archive_document_id;
             $excerpt = $this->trimExcerpt((string) $chunk->chunk);
-            if ($excerpt !== '' && isset($sources[$docId])) {
+            if (
+                $excerpt !== ''
+                && isset($sources[$docId])
+                && !isset($sourceExcerptKeys[$docId][$excerpt])
+            ) {
                 $sources[$docId]['excerpts'][] = $excerpt;
+                $sourceExcerptKeys[$docId][$excerpt] = true;
             }
             if (count($contextChunks) < 8) {
                 $name = $sources[$docId]['name'] ?? (string) $docId;
-                $contextChunks[] = "Dokument: {$name}\nText: {$excerpt}";
+                $contextChunks[] = "Dokument: {$name}\nText: ".trim((string) $chunk->chunk);
             }
         }
 
@@ -207,7 +215,7 @@ class SearchController extends Controller
                         'content' => [
                             [
                                 'type' => 'input_text',
-                                'text' => 'Si speleologický asistent pre vyhľadávanie informácií v archívnych dokumentoch. Odpovedz vecne a podrobne iba na základe poskytnutého kontextu. Nepridávaj žiadne všeobecné informácie ani domnienky mimo archívnych dokumentov. Ak kontext nestačí, jasne uveď, že v poskytnutých dokumentoch sa odpoveď nenachádza. Nezačínaj odpoveď frázou "Na základe poskytnutého kontextu"; ak potrebuješ úvod, použi "Na základe informácií z archivovaných dokumentov".',
+                                'text' => 'Si speleologický asistent pre vyhľadávanie informácií v archívnych dokumentoch. Odpovedz vecne, ale detailne a výstižne iba na základe poskytnutého kontextu; zahrň všetky relevantné fakty z kontextu. Nepridávaj žiadne všeobecné informácie ani domnienky mimo archívnych dokumentov. Ak kontext nestačí, jasne uveď, že v poskytnutých dokumentoch sa odpoveď nenachádza. Nezačínaj odpoveď frázou "Na základe poskytnutého kontextu"; ak potrebuješ úvod, použi "Na základe informácií z archivovaných dokumentov".',
                             ],
                         ],
                     ],
