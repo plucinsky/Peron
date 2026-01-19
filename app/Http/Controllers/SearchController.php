@@ -92,6 +92,7 @@ class SearchController extends Controller
         $expandedByDoc = [];
         $sourceExcerptKeys = [];
         $contextKeys = [];
+        $maxContextChunks = (int) env('RAG_CONTEXT_CHUNKS', 16);
 
         foreach ($rows as $row) {
             $docId = (int) $row->archive_document_id;
@@ -148,41 +149,72 @@ class SearchController extends Controller
             }
         }
 
+        $addContextChunk = function (int $docId, int $index) use (
+            &$contextChunks,
+            &$contextKeys,
+            $expandedChunks,
+            $sources,
+            &$sourceExcerptKeys,
+            $maxContextChunks
+        ): bool {
+            if (count($contextChunks) >= $maxContextChunks) {
+                return false;
+            }
+
+            $key = $docId.':'.$index;
+            if (isset($contextKeys[$key])) {
+                return false;
+            }
+
+            $chunk = $expandedChunks[$key] ?? null;
+            if (!$chunk) {
+                return false;
+            }
+
+            $excerpt = $this->trimExcerpt((string) $chunk->chunk);
+            if ($excerpt !== '' && isset($sources[$docId]) && !isset($sourceExcerptKeys[$docId][$excerpt])) {
+                $sources[$docId]['excerpts'][] = $excerpt;
+                $sourceExcerptKeys[$docId][$excerpt] = true;
+            }
+
+            $name = $sources[$docId]['name'] ?? (string) $docId;
+            $contextChunks[] = "Dokument: {$name}\nText: ".trim((string) $chunk->chunk);
+            $contextKeys[$key] = true;
+
+            return true;
+        };
+
+        $primaryRows = [];
+        $primaryByDoc = [];
         foreach ($rows as $row) {
-            if (count($contextChunks) >= 8) {
+            $docId = (int) $row->archive_document_id;
+            if (!isset($primaryByDoc[$docId])) {
+                $primaryByDoc[$docId] = $row;
+                $primaryRows[] = $row;
+            }
+        }
+
+        foreach ($primaryRows as $row) {
+            if (count($contextChunks) >= $maxContextChunks) {
+                break;
+            }
+            $addContextChunk((int) $row->archive_document_id, (int) $row->chunk_index);
+        }
+
+        foreach ($rows as $row) {
+            if (count($contextChunks) >= $maxContextChunks) {
                 break;
             }
 
             $docId = (int) $row->archive_document_id;
             $index = (int) $row->chunk_index;
             for ($i = $index - 2; $i <= $index + 2; $i++) {
-                if ($i < 0 || count($contextChunks) >= 8) {
+                if ($i < 0) {
                     continue;
                 }
-
-                $key = $docId.':'.$i;
-                if (isset($contextKeys[$key])) {
-                    continue;
+                if (!$addContextChunk($docId, $i) && count($contextChunks) >= $maxContextChunks) {
+                    break;
                 }
-
-                $chunk = $expandedChunks[$key] ?? null;
-                if (!$chunk) {
-                    continue;
-                }
-
-                $excerpt = $this->trimExcerpt((string) $chunk->chunk);
-                if (
-                    $excerpt !== ''
-                    && isset($sources[$docId])
-                    && !isset($sourceExcerptKeys[$docId][$excerpt])
-                ) {
-                    $sources[$docId]['excerpts'][] = $excerpt;
-                    $sourceExcerptKeys[$docId][$excerpt] = true;
-                }
-
-                $name = $sources[$docId]['name'] ?? (string) $docId;
-                $contextChunks[] = "Dokument: {$name}\nText: ".trim((string) $chunk->chunk);
-                $contextKeys[$key] = true;
             }
         }
 
