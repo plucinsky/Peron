@@ -48,7 +48,7 @@ class SearchController extends Controller
 
         $vector = $this->vectorLiteral($embedding);
         $rows = DB::select(
-            'SELECT e.archive_document_id, e.chunk, e.chunk_index, d.name, d.original_filename, d.extension, d.preview_page_count, d.preview_status, (e.embedding <-> ?::vector) as distance
+            'SELECT e.archive_document_id, e.chunk, e.chunk_index, d.name, d.original_filename, d.extension, d.preview_page_count, d.preview_status, d.processed_diary_data, (e.embedding <-> ?::vector) as distance
              FROM archive_document_embeddings e
              JOIN archive_documents d ON d.id = e.archive_document_id
              ORDER BY e.embedding <-> ?::vector
@@ -88,44 +88,9 @@ class SearchController extends Controller
 
         $sources = [];
         $contextChunks = [];
-        $expandedChunks = [];
-        $expandedByDoc = [];
         $sourceExcerptKeys = [];
-        $contextKeys = [];
-        $maxContextChunks = (int) env('RAG_CONTEXT_CHUNKS', 16);
-
-        foreach ($rows as $row) {
-            $docId = (int) $row->archive_document_id;
-            $index = (int) $row->chunk_index;
-            if (!isset($expandedByDoc[$docId])) {
-                $expandedByDoc[$docId] = [];
-            }
-            for ($i = $index - 2; $i <= $index + 2; $i++) {
-                if ($i < 0) {
-                    continue;
-                }
-                $expandedByDoc[$docId][$i] = true;
-            }
-        }
-
-        foreach ($expandedByDoc as $docId => $indicesMap) {
-            $indices = array_keys($indicesMap);
-            if (count($indices) === 0) {
-                continue;
-            }
-
-            $chunks = DB::table('archive_document_embeddings')
-                ->select('archive_document_id', 'chunk', 'chunk_index')
-                ->where('archive_document_id', $docId)
-                ->whereIn('chunk_index', $indices)
-                ->orderBy('chunk_index')
-                ->get();
-
-            foreach ($chunks as $chunk) {
-                $key = $docId.':'.(int) $chunk->chunk_index;
-                $expandedChunks[$key] = $chunk;
-            }
-        }
+        $maxContextDocs = (int) env('RAG_CONTEXT_CHUNKS', 16);
+        $processedByDoc = [];
         foreach ($rows as $row) {
             $docId = (int) $row->archive_document_id;
             if (!isset($sources[$docId])) {
@@ -142,80 +107,35 @@ class SearchController extends Controller
                 $sourceExcerptKeys[$docId] = [];
             }
 
-            $excerpt = $this->trimExcerpt((string) $row->chunk);
-            if ($excerpt !== '' && !isset($sourceExcerptKeys[$docId][$excerpt])) {
-                $sources[$docId]['excerpts'][] = $excerpt;
-                $sourceExcerptKeys[$docId][$excerpt] = true;
+            $processed = $this->normalizeProcessedDiaryData($row->processed_diary_data ?? null);
+            if (!isset($processedByDoc[$docId])) {
+                $processedByDoc[$docId] = $processed;
+            }
+
+            if (!empty($processed)) {
+                foreach ($this->formatDiaryDataExcerpts($processed) as $excerpt) {
+                    if ($excerpt === '' || isset($sourceExcerptKeys[$docId][$excerpt])) {
+                        continue;
+                    }
+                    $sources[$docId]['excerpts'][] = $excerpt;
+                    $sourceExcerptKeys[$docId][$excerpt] = true;
+                }
             }
         }
 
-        $addContextChunk = function (int $docId, int $index) use (
-            &$contextChunks,
-            &$contextKeys,
-            $expandedChunks,
-            $sources,
-            &$sourceExcerptKeys,
-            $maxContextChunks
-        ): bool {
-            if (count($contextChunks) >= $maxContextChunks) {
-                return false;
+        foreach ($processedByDoc as $docId => $processed) {
+            if (count($contextChunks) >= $maxContextDocs) {
+                break;
             }
-
-            $key = $docId.':'.$index;
-            if (isset($contextKeys[$key])) {
-                return false;
+            if (empty($processed)) {
+                continue;
             }
-
-            $chunk = $expandedChunks[$key] ?? null;
-            if (!$chunk) {
-                return false;
+            $payload = json_encode($processed, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            if ($payload === false || $payload === '') {
+                continue;
             }
-
-            $excerpt = $this->trimExcerpt((string) $chunk->chunk);
-            if ($excerpt !== '' && isset($sources[$docId]) && !isset($sourceExcerptKeys[$docId][$excerpt])) {
-                $sources[$docId]['excerpts'][] = $excerpt;
-                $sourceExcerptKeys[$docId][$excerpt] = true;
-            }
-
             $name = $sources[$docId]['name'] ?? (string) $docId;
-            $contextChunks[] = "Dokument: {$name}\nText: ".trim((string) $chunk->chunk);
-            $contextKeys[$key] = true;
-
-            return true;
-        };
-
-        $primaryRows = [];
-        $primaryByDoc = [];
-        foreach ($rows as $row) {
-            $docId = (int) $row->archive_document_id;
-            if (!isset($primaryByDoc[$docId])) {
-                $primaryByDoc[$docId] = $row;
-                $primaryRows[] = $row;
-            }
-        }
-
-        foreach ($primaryRows as $row) {
-            if (count($contextChunks) >= $maxContextChunks) {
-                break;
-            }
-            $addContextChunk((int) $row->archive_document_id, (int) $row->chunk_index);
-        }
-
-        foreach ($rows as $row) {
-            if (count($contextChunks) >= $maxContextChunks) {
-                break;
-            }
-
-            $docId = (int) $row->archive_document_id;
-            $index = (int) $row->chunk_index;
-            for ($i = $index - 2; $i <= $index + 2; $i++) {
-                if ($i < 0) {
-                    continue;
-                }
-                if (!$addContextChunk($docId, $i) && count($contextChunks) >= $maxContextChunks) {
-                    break;
-                }
-            }
+            $contextChunks[] = "Dokument: {$name}\nSpracovane data: {$payload}";
         }
 
         $sources = array_values($sources);
@@ -313,6 +233,53 @@ class SearchController extends Controller
         }
 
         return mb_substr($text, 0, 220).'...';
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function normalizeProcessedDiaryData($data): array
+    {
+        if (is_array($data)) {
+            return $data;
+        }
+
+        if (is_string($data) && $data !== '') {
+            $decoded = json_decode($data, true);
+            return is_array($decoded) ? $decoded : [];
+        }
+
+        return [];
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     * @return array<int, string>
+     */
+    private function formatDiaryDataExcerpts(array $data): array
+    {
+        $fields = [
+            'report_number' => 'C. spravy',
+            'action_date' => 'Datum',
+            'locality_name' => 'Lokalita',
+            'leader_name' => 'Veduci',
+            'work_description' => 'Popis',
+        ];
+        $excerpts = [];
+
+        foreach ($fields as $key => $label) {
+            $value = $data[$key] ?? '';
+            if (is_array($value)) {
+                $value = implode(', ', array_filter(array_map('strval', $value)));
+            }
+            $value = trim((string) $value);
+            if ($value === '') {
+                continue;
+            }
+            $excerpts[] = $this->trimExcerpt("{$label}: {$value}");
+        }
+
+        return $excerpts;
     }
 
     /**
