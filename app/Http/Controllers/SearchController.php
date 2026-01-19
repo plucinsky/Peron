@@ -88,6 +88,41 @@ class SearchController extends Controller
 
         $sources = [];
         $contextChunks = [];
+        $expandedChunks = [];
+        $expandedByDoc = [];
+
+        foreach ($rows as $row) {
+            $docId = (int) $row->archive_document_id;
+            $index = (int) $row->chunk_index;
+            if (!isset($expandedByDoc[$docId])) {
+                $expandedByDoc[$docId] = [];
+            }
+            for ($i = $index - 2; $i <= $index + 2; $i++) {
+                if ($i < 0) {
+                    continue;
+                }
+                $expandedByDoc[$docId][$i] = true;
+            }
+        }
+
+        foreach ($expandedByDoc as $docId => $indicesMap) {
+            $indices = array_keys($indicesMap);
+            if (count($indices) === 0) {
+                continue;
+            }
+
+            $chunks = DB::table('archive_document_embeddings')
+                ->select('archive_document_id', 'chunk', 'chunk_index')
+                ->where('archive_document_id', $docId)
+                ->whereIn('chunk_index', $indices)
+                ->orderBy('chunk_index')
+                ->get();
+
+            foreach ($chunks as $chunk) {
+                $key = $docId.':'.(int) $chunk->chunk_index;
+                $expandedChunks[$key] = $chunk;
+            }
+        }
         foreach ($rows as $row) {
             $docId = (int) $row->archive_document_id;
             if (!isset($sources[$docId])) {
@@ -107,9 +142,17 @@ class SearchController extends Controller
             if ($excerpt !== '') {
                 $sources[$docId]['excerpts'][] = $excerpt;
             }
+        }
 
+        foreach ($expandedChunks as $chunk) {
+            $docId = (int) $chunk->archive_document_id;
+            $excerpt = $this->trimExcerpt((string) $chunk->chunk);
+            if ($excerpt !== '' && isset($sources[$docId])) {
+                $sources[$docId]['excerpts'][] = $excerpt;
+            }
             if (count($contextChunks) < 8) {
-                $contextChunks[] = "Dokument: {$row->name}\nText: {$excerpt}";
+                $name = $sources[$docId]['name'] ?? (string) $docId;
+                $contextChunks[] = "Dokument: {$name}\nText: {$excerpt}";
             }
         }
 
@@ -164,7 +207,7 @@ class SearchController extends Controller
                         'content' => [
                             [
                                 'type' => 'input_text',
-                                'text' => 'Si speleologický asistent pre vyhľadávanie informácií v archívnych dokumentoch. Odpovedz vecne a podrobne na základe poskytnutého kontextu. Rozviň odpoveď tak, aby bola užitočná pre ľudí, ktorí cielene vyhľadávajú informácie v archívnych dokumentoch. Ak kontext nestačí, jasne to uveď a môžeš pridať všeobecné známe informácie, ale musíš ich výslovne označiť ako všeobecné (mimo archívnych dokumentov). Nezačínaj odpoveď frázou "Na základe poskytnutého kontextu"; ak potrebuješ úvod, použi "Na základe informácií z archivovaných dokumentov".',
+                                'text' => 'Si speleologický asistent pre vyhľadávanie informácií v archívnych dokumentoch. Odpovedz vecne a podrobne iba na základe poskytnutého kontextu. Nepridávaj žiadne všeobecné informácie ani domnienky mimo archívnych dokumentov. Ak kontext nestačí, jasne uveď, že v poskytnutých dokumentoch sa odpoveď nenachádza. Nezačínaj odpoveď frázou "Na základe poskytnutého kontextu"; ak potrebuješ úvod, použi "Na základe informácií z archivovaných dokumentov".',
                             ],
                         ],
                     ],
