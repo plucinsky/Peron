@@ -48,19 +48,54 @@ class SearchController extends Controller
 
         $vector = $this->vectorLiteral($embedding);
         $rows = DB::select(
-            'SELECT e.archive_document_id, e.chunk, e.chunk_index, d.name, d.original_filename, d.extension, d.preview_page_count, d.preview_status, d.processed_diary_data, (e.embedding <-> ?::vector) as distance
+            'SELECT e.archive_document_id, e.chunk, e.chunk_index, d.name, d.original_filename, d.extension, d.preview_page_count, d.preview_status, d.processed_diary_data, (e.embedding <=> ?::vector) as distance
              FROM archive_document_embeddings e
              JOIN archive_documents d ON d.id = e.archive_document_id
-             ORDER BY e.embedding <-> ?::vector
+             ORDER BY e.embedding <=> ?::vector
              LIMIT 12',
             [$vector, $vector]
         );
 
-        $maxDistance = (float) env('RAG_MAX_DISTANCE', 1.0);
+        if (count($rows) > 0) {
+            $rawDistances = array_map(
+                fn ($row) => (float) $row->distance,
+                $rows
+            );
+            logger()->info('RAG raw distances.', [
+                'query' => $query,
+                'min' => min($rawDistances),
+                'max' => max($rawDistances),
+            ]);
+        }
+
+        $maxDistance = (float) env('RAG_MAX_DISTANCE_COSINE', (float) env('RAG_MAX_DISTANCE', 0.8));
         $rows = array_values(array_filter(
             $rows,
             fn ($row) => (float) $row->distance <= $maxDistance
         ));
+
+        if (count($rows) === 0) {
+            $tokens = preg_split('/[^\p{L}\p{N}]+/u', $query, -1, PREG_SPLIT_NO_EMPTY);
+            $tokens = array_values(array_filter(array_unique($tokens), fn (string $token) => mb_strlen($token) >= 3));
+            if (count($tokens) > 0) {
+                $likeClauses = implode(' OR ', array_fill(0, count($tokens), 'unaccent(e.chunk) ILIKE unaccent(?)'));
+                $bindings = array_map(fn (string $token) => '%'.$token.'%', $tokens);
+                $rows = DB::select(
+                    'SELECT e.archive_document_id, e.chunk, e.chunk_index, d.name, d.original_filename, d.extension, d.preview_page_count, d.preview_status, d.processed_diary_data, NULL as distance
+                     FROM archive_document_embeddings e
+                     JOIN archive_documents d ON d.id = e.archive_document_id
+                     WHERE '.$likeClauses.'
+                     ORDER BY e.archive_document_id, e.chunk_index
+                     LIMIT 24',
+                    $bindings
+                );
+                logger()->info('RAG keyword fallback.', [
+                    'query' => $query,
+                    'tokens' => $tokens,
+                    'row_count' => count($rows),
+                ]);
+            }
+        }
 
         logger()->info('RAG search results.', [
             'query' => $query,
@@ -145,7 +180,9 @@ class SearchController extends Controller
             'query' => $query,
             'context_chars' => strlen($context),
             'context_chunks' => count($contextChunks),
+            'context_chunks_payload' => $contextChunks,
         ]);
+
 
         $answer = $this->generateAnswer($query, $context);
 
